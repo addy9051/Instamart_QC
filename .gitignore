@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.pytest_cache/
+.ruff_cache/
+data/*
+!data/README.md
+!data/datasets.yaml
+artifacts/
+runs/
+*.pt
+*.onnx
+*.engine
+*.ts

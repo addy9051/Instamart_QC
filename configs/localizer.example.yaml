@@ -1,0 +1,6 @@
+path: D:/path/to/owned-camera-dataset
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: product

@@ -1,0 +1,15 @@
+version: 1
+# Values are example policy inputs. Replace with the retailer's signed-off rules.
+categories:
+  dairy:
+    min_remaining_life_pct: 70
+    reference_shelf_life_days: 7
+  bakery:
+    min_remaining_life_pct: 70
+    reference_shelf_life_days: 5
+  packaged:
+    min_remaining_life_pct: 50
+    reference_shelf_life_days: 365
+  produce:
+    min_remaining_life_pct: 0
+    reference_shelf_life_days: 7

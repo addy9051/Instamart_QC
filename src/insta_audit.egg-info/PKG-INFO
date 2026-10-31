@@ -1,0 +1,103 @@
+Metadata-Version: 2.4
+Name: insta-audit
+Version: 0.1.0
+Summary: Edge-oriented retail packing and inwarding quality audit service
+License: Proprietary project code; dataset/model licenses remain separate
+Requires-Python: <3.13,>=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi<1,>=0.115
+Requires-Dist: uvicorn[standard]<1,>=0.30
+Requires-Dist: pydantic-settings<3,>=2.6
+Requires-Dist: PyYAML<7,>=6
+Requires-Dist: numpy<3,>=1.26
+Requires-Dist: Pillow<13,>=10
+Requires-Dist: requests<3,>=2.32
+Provides-Extra: api
+Provides-Extra: vision
+Requires-Dist: torch<3,>=2.4; extra == "vision"
+Requires-Dist: torchvision<1,>=0.19; extra == "vision"
+Requires-Dist: transformers<5,>=4.45; extra == "vision"
+Requires-Dist: faiss-cpu<2,>=1.8; extra == "vision"
+Provides-Extra: training
+Requires-Dist: ultralytics<9,>=8.3; extra == "training"
+Requires-Dist: scikit-learn<2,>=1.5; extra == "training"
+Requires-Dist: albumentations<3,>=1.4; extra == "training"
+Requires-Dist: tqdm<5,>=4.66; extra == "training"
+Provides-Extra: ocr
+Requires-Dist: paddleocr<3,>=2.9; extra == "ocr"
+Provides-Extra: dev
+Requires-Dist: ruff<1,>=0.8; extra == "dev"
+Requires-Dist: mypy<2,>=1.13; extra == "dev"
+
+# Insta-Audit
+
+Insta-Audit is a modular, edge-oriented quality-control system for quick-commerce stores. It combines drop-to-bag event auditing (visual SKU match + measured weight delta), inwarding expiry OCR, produce condition triage, a FastAPI service, and the original browser demo.
+
+The demo runs by opening `index.html`. The ML service is a separate Python application under `src/insta_audit`.
+
+## Project status and production boundary
+
+This repository provides an engineering baseline and data/training workflows. It includes a locally generated 18-SKU DINOv2 reference bank built from real catalog photos, but does **not** contain store-trained packing/freshness models, live store footage, or hardware drivers. Until store-specific models and sensor adapters are supplied, uncertain inference returns explicit `review_required` results rather than invented confidence scores. Data collection, model validation, sensor calibration, and a controlled store pilot are still needed before operational deployment.
+
+The browser UI (`index.html`) remains a standalone simulation and is not yet wired to the FastAPI service.
+
+The suggested public datasets are not interchangeable or automatically production-licensed. Products-10K and RPC are non-commercial research datasets; MVTec D2S has separate access and license terms. They are not silently downloaded or used by the default pipeline. Open Food Facts can provide catalog metadata and reference photos, subject to ODbL / CC BY-SA attribution and share-alike obligations. Catalog photos are not a substitute for real packing-camera views. For commercial deployment, use appropriately licensed assets and a store-owned, consented, annotated evaluation set.
+
+## Repository map
+
+- `src/insta_audit/api`: FastAPI health, packing audit, and inwarding endpoints.
+- `src/insta_audit/vision`: SKU embedding bank and optional detector adapters.
+- `src/insta_audit/quality`: shelf-life policy, expiry OCR adapter, and freshness model adapter.
+- `src/insta_audit/sensors`: load-cell interface and calibration utilities.
+- `src/insta_audit/data`: Open Food Facts importer and dataset manifest/validation tools.
+- `scripts`: catalog ingestion, anchor-bank build, training entry points, and video evaluation.
+- `configs`: policy and example SKU catalog.
+- `data/README.md`: folder conventions and capture/evaluation protocol.
+
+## Setup
+
+Python 3.11 is recommended. Create a virtual environment, then install:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e ".[api,vision,training]"
+```
+
+Optional OCR adapters:
+
+```powershell
+pip install -e ".[ocr]"
+```
+
+OCR remains unloaded unless `INSTA_AUDIT_ENABLE_OCR=true` and local PaddleOCR detection, recognition, and angle-classifier model directories are configured. Model files must be provisioned and reviewed before deployment.
+
+## Data workflow
+
+1. Review `data/README.md` and the dataset notices in `data/datasets.yaml`.
+2. Pull a small Open Food Facts India catalog sample with `python scripts/fetch_open_food_facts.py --limit 100 --output data/catalog/openfoodfacts_india.jsonl`; optionally add `--download-images` to fetch catalog photos. A 20-record metadata sample and 19 linked front photos (18 unique SKUs) are in the git-ignored `data/catalog/` folder. Review each image's attribution/rights. These are catalog references for initialization only, not training/evaluation substitutes for store camera views.
+3. Organize the downloaded photos with `python scripts/prepare_open_food_facts_anchors.py`. This creates a draft SKU manifest and one-view anchor folders; add owned back/side/tilted views and measured unit weights before packing evaluation.
+4. Add owned store-camera frames using the layouts in `data/README.md`; keep order/session IDs grouped when splitting to prevent leakage.
+5. Copy `configs/localizer.example.yaml` to a private/local `data/localizer.yaml`, edit it to point to annotated capture data, then train: `python scripts/train_detector.py --data data/localizer.yaml`.
+6. Build SKU embeddings from reviewed anchor folders: `python scripts/build_embedding_bank.py --catalog data/catalog/skus.yaml --images data/anchors --output artifacts/sku_bank.npz`.
+7. Train freshness on labeled, in-domain produce images with `python scripts/train_freshness.py --data data/inward --output artifacts/freshness.ts`. Do not deploy a model without a held-out store test.
+8. For an edge embedding runtime, export a locally provisioned DINOv2 snapshot with `python scripts/export_dino_onnx.py --model-dir models/dinov2-small`. Compile and benchmark the ONNX model for the actual target runtime; no latency claim is assumed here.
+9. Start the development service with the real bank/model selected:
+
+   ```powershell
+   $env:INSTA_AUDIT_SKU_BANK_PATH = "artifacts/sku_bank.npz"
+   $env:INSTA_AUDIT_EMBEDDING_MODEL_PATH = "facebook/dinov2-small"
+   uvicorn insta_audit.api.main:app --host 127.0.0.1 --port 8080
+   ```
+
+   Open `http://127.0.0.1:8080/` and use **Real Catalog Image Check** to upload a product photo and query the actual DINOv2 bank. The packing drop buttons remain simulated; live camera and scale adapters are not connected.
+
+## API
+
+- `GET /health` — liveness and model readiness.
+- `POST /v1/packing/audit` — one drop event, expected SKU, visual embedding (or crop reference), and calibrated weight delta.
+- `POST /v1/inward/expiry` — optional close-up image or recognized text plus received date and category. Set `INSTA_AUDIT_ENABLE_OCR=true` to load the optional OCR adapter.
+- `POST /v1/inward/freshness` — produce image for condition triage.
+
+See `docs/architecture.md` and the OpenAPI page at `/docs` after starting the service. Integrate camera, scale, order service, and secure event transport through store-specific adapters; do not expose the demo server directly to a public network. The Docker image is API-only; install the matching `[vision]` / `[ocr]` extras and mount reviewed local model artifacts to enable those adapters. In production mode, set `INSTA_AUDIT_API_KEY`.

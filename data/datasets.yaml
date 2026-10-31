@@ -1,0 +1,37 @@
+datasets:
+  open_food_facts_india:
+    role: catalog metadata and reference-image discovery only
+    access: public API; user agent and request etiquette required
+    license: database ODbL; product images CC BY-SA with image-specific rights caveat
+    default_pipeline: true
+    url: https://world.openfoodfacts.org/
+  sku_110k:
+    role: dense retail object-localization benchmark; not India dark-store distribution
+    access: official project release
+    license: exclusive recipient use for academic and non-commercial purposes
+    default_pipeline: false
+    url: https://github.com/eg4000/SKU110K_CVPR19
+  rpc:
+    role: checkout recognition benchmark; not packer drop-to-bag camera distribution
+    access: dataset project release / Kaggle
+    license: CC BY-NC-SA 4.0 per project page
+    default_pipeline: false
+    url: https://rpc-dataset.github.io/
+  products_10k:
+    role: fine-grained classification benchmark; JD.com catalog domain, no India packer views
+    access: request / accept dataset terms
+    license: non-commercial research and education only
+    default_pipeline: false
+    url: https://products-10k.github.io/
+  mvtec_d2s:
+    role: segmentation / synthetic compositing experiments
+    access: request form through MVTec
+    license: CC BY-NC-SA 4.0; explicitly not for commercial use
+    default_pipeline: false
+    url: https://www.mvtec.com/company/research/datasets/mvtec-d2s
+  store_capture:
+    role: train/validation/test for target packing and inwarding domains
+    access: project-owned, consented, de-identified capture and annotation
+    license: project data governance approval required
+    default_pipeline: required_for_production
+    url: ""

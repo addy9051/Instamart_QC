@@ -1,0 +1,17 @@
+version: 1
+skus:
+  - sku: "8901491501054"
+    name: "Lays Magic Masala 52 g"
+    expected_unit_weight_g: 52
+    weight_tolerance_pct: 18
+    category: packaged
+  - sku: "8901262150012"
+    name: "Amul Taaza Milk 500 ml"
+    expected_unit_weight_g: 515
+    weight_tolerance_pct: 12
+    category: dairy
+  - sku: "FNV-VEG-081"
+    name: "Tomatoes 500 g"
+    expected_unit_weight_g: 500
+    weight_tolerance_pct: 25
+    category: produce

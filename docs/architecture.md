@@ -1,0 +1,25 @@
+# Architecture and rollout notes
+
+## Event path
+
+1. A store adapter reads the order lines, calibrated scale, and camera frames. ByteTrack IDs and a configured bag-mouth crossing line create candidate drop events (`track_video.py` is an offline reference path).
+2. The edge worker crops the object, produces a DINOv2 embedding, and sends the embedding or a bounded image crop with the measured weight delta to `/v1/packing/audit`.
+3. `SkuBank` finds the closest owned multi-view anchor. The decision combines SKU identity, observed count, and expected-vs-measured grams. A missing model/reference match returns review; uncertain candidates must not silently pass.
+4. On batch receiving, a close-up date image is OCR'd (when enabled) and parsed into a calendar date. The category policy compares remaining days with a configured reference shelf-life. The reference duration is an approximation until batch manufacture date / vendor policy is available.
+5. Produce grading is a triage signal only. The model cannot see hidden spoilage, contamination, temperature abuse, or food-safety conditions.
+
+## Model and data controls
+
+- Version each SKU bank, model artifact, capture protocol, calibration, and policy. Store their versions in the deployment manifest and audit event.
+- Evaluate by held-out store/day/session. Report per-SKU confusion, wrong-variant miss rate, false-hold rate, review rate, latency percentiles, calibration drift, and packer intervention time. Aggregate accuracy alone is not a release gate.
+- Tune thresholds for the cost of a missed error versus a false hold. Keep a human-review path and a kill switch; only release a model after an operations-approved shadow-mode period.
+- Do not persist raw customer orders, video, or images beyond the approved retention policy. API access control is optional in development and mandatory in production mode.
+- The SKU embedder, freshness checkpoint, and optional OCR adapter load only from local artifact paths. The service does not download model weights at startup.
+
+## Practical limits
+
+The public datasets named in the project brief are component benchmarks, not the target domain. Open Food Facts images are catalog anchors, often studio-like and inconsistent. SKU-110K/RPC/MVTec/Products-10K have distinct access and use conditions. Production readiness requires store-owned samples, a calibrated weight stream, a detector/track adapter tuned at the bag ROI, and measured latency on the actual edge hardware.
+
+For edge rollout, export and compile models on a build host that matches the JetPack/TensorRT version on the target Orin device. Validate preprocessing parity, output similarity, precision drift, tail latency, thermal throttling, memory, and camera/scale synchronization on-device. The ONNX export helper is only the starting point; it does not establish a TensorRT engine or a latency SLA.
+
+The example detector trainer uses Ultralytics for iteration convenience. Review its current AGPL/enterprise licensing before commercial deployment. The product code's license does not grant rights to datasets, images, model checkpoints, or third-party libraries.

@@ -1,6 +1,7 @@
 import json
 import hashlib
 import os
+import re
 import time
 from urllib.parse import urlparse
 from pathlib import Path
@@ -9,6 +10,25 @@ import requests
 
 API_URL = "https://world.openfoodfacts.org/cgi/search.pl"
 FIELDS = "code,product_name,brands,quantity,countries_tags,image_front_url,image_url,url"
+CATEGORY_RULES = [
+    ("dairy", re.compile(r"\b(amul|butter|milk|buttermilk|doodh|paneer|curd|yogurt|cheese)\b", re.I)),
+    ("pantry_staples", re.compile(r"\b(salt|oats|dal|moong|mung|rice|atta|flour|sugar|poha|murmura)\b", re.I)),
+    ("condiments_and_spreads", re.compile(r"\b(kissan|jam|chutney|vinegar|sauce|ketchup)\b", re.I)),
+    ("biscuits_and_bakery", re.compile(r"\b(biscuit|cookie|cracker|krackjack|monaco|oreo|parle-g|hide.?seek|happy happy|bourbon|jimjam|malkist)\b", re.I)),
+    ("snacks_and_namkeen", re.compile(r"\b(wafers|chips|kurkure|sev|bhujia|namkeen|munch|chivda|puffcorn|nachos|chocos|tedhe medhe|potato|crunchex|murmura|bingo|lays|lay's)\b", re.I)),
+    ("confectionery", re.compile(r"\b(chocolate|dairy milk|kitkat|oreo choco|dark fantasy|crystallized)\b", re.I)),
+    ("tea_coffee_and_mixes", re.compile(r"\b(coffee|bru|maggi|custard|instant)\b", re.I)),
+    ("beverages", re.compile(r"\b(coca.?cola|coke|sprite|thums.?up|thumbs.?up|pepsi|maaza|pulpy orange|minute maid|coconut water|storia|kinley|bisleri|perrier|red bull|sting|energy drink|water|mogu|hell)\b", re.I)),
+]
+
+
+def instamart_demo_category(name: str, brand: str = "") -> str | None:
+    """Small-scope packaging categories for the India-market Instamart QC demo."""
+    text = f"{name} {brand}"
+    for category, pattern in CATEGORY_RULES:
+        if pattern.search(text):
+            return category
+    return None
 
 
 def fetch_india_catalog(
@@ -53,12 +73,18 @@ def fetch_india_catalog(
                 name = str(product.get("product_name", "")).strip()
                 if not code or not name:
                     continue
+                countries = product.get("countries_tags", [])
+                category = instamart_demo_category(name, str(product.get("brands", "")))
+                # Keep the public pull narrow: India-market grocery packaging only.
+                if not code.startswith("890") or "en:india" not in countries or not category:
+                    continue
                 row = {
                     "sku": code,
                     "name": name,
                     "brand": product.get("brands", ""),
                     "quantity": product.get("quantity", ""),
                     "countries_tags": product.get("countries_tags", []),
+                    "instamart_demo_category": category,
                     "image_url": product.get("image_front_url") or product.get("image_url"),
                     "source": "Open Food Facts",
                     "source_url": product.get("url"),

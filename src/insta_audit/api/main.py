@@ -1,4 +1,4 @@
-import hmac
+﻿import hmac
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -7,6 +7,7 @@ import yaml
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 
+from insta_audit.catalog import load_catalog
 from insta_audit.decision import audit_drop, reconcile_order
 from insta_audit.quality.expiry import evaluate_expiry, parse_expiry
 from insta_audit.quality.freshness import FreshnessClassifier
@@ -31,9 +32,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("insta_audit.api")
 settings = get_settings()
 app = FastAPI(title="Insta-Audit API", version="0.1.0", description="Edge-oriented store QC decision service")
-if settings.environment == "production" and not settings.api_key:
+if settings.environment == "production" and not settings.api_key and not settings.demo_ui:
     raise RuntimeError("INSTA_AUDIT_API_KEY is required when INSTA_AUDIT_ENVIRONMENT=production")
 bank = SkuBank(settings.sku_bank_path)
+catalog = load_catalog(settings.catalog_path)
 freshness = FreshnessClassifier(settings.freshness_model_path)
 embedder = DinoEmbedder(settings.embedding_model_path)
 ocr = ExpiryOCR(settings.ocr_det_model_dir, settings.ocr_rec_model_dir, settings.ocr_cls_model_dir) if settings.enable_ocr else None
@@ -44,7 +46,7 @@ project_root = Path(__file__).resolve().parents[3]
 
 
 def demo_file(filename: str) -> FileResponse:
-    if settings.environment == "production":
+    if settings.environment == "production" and not settings.demo_ui:
         raise HTTPException(status_code=404, detail="demo UI is disabled in production")
     return FileResponse(project_root / filename)
 
@@ -86,6 +88,11 @@ def health() -> HealthResponse:
 @app.get("/v1/catalog/skus", dependencies=[Depends(authenticate)])
 def catalog_skus() -> dict:
     return {"skus": sorted(set(bank.skus.tolist())) if bank.ready else [], "model_ready": bank.ready}
+
+
+@app.get("/v1/catalog/items", dependencies=[Depends(authenticate)])
+def catalog_items() -> dict:
+    return {"items": list(catalog.values()), "count": len(catalog)}
 
 
 @app.post("/v1/catalog/match", response_model=CatalogMatchResponse, dependencies=[Depends(authenticate)])
@@ -147,3 +154,5 @@ def inward_freshness(payload: FreshnessRequest) -> dict:
     result = freshness.predict_base64(payload.image_base64)
     logger.info("freshness decision=%s reasons=%s", result["decision"], ",".join(result["reason_codes"]))
     return result
+
+

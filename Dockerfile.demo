@@ -1,0 +1,25 @@
+# Public showcase image: API + browser UI + real DINOv2 bank + freshness model (CPU).
+# Build:  docker build -f Dockerfile.demo -t insta-audit-demo .
+# Run:    docker run -p 8080:8080 insta-audit-demo      (Render/Fly/HF Spaces: use $PORT / 7860)
+FROM python:3.11-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HOME=/opt/hf \
+    INSTA_AUDIT_ENVIRONMENT=production INSTA_AUDIT_DEMO_UI=true \
+    INSTA_AUDIT_SKU_BANK_PATH=artifacts/sku_bank.npz \
+    INSTA_AUDIT_CATALOG_PATH=data/catalog/skus.yaml \
+    INSTA_AUDIT_FRESHNESS_MODEL_PATH=artifacts/freshness.ts \
+    INSTA_AUDIT_EMBEDDING_MODEL_PATH=/opt/hf/dinov2-small
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir ".[vision]" \
+ && python -c "from huggingface_hub import snapshot_download as s; s('facebook/dinov2-small', local_dir='/opt/hf/dinov2-small')"
+COPY configs ./configs
+COPY artifacts ./artifacts
+COPY data/catalog/skus.yaml ./data/catalog/skus.yaml
+COPY index.html app.js styles.css live.css ./
+RUN useradd --create-home --uid 10001 appuser
+USER appuser
+EXPOSE 8080
+CMD ["sh", "-c", "uvicorn insta_audit.api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+

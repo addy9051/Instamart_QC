@@ -1,4 +1,25 @@
 datasets:
+  supermarket_shelves_humans_in_the_loop:
+    role: commercial-friendly class-agnostic shelf/price detector warm-start
+    access: access form on the publisher's page
+    size: 45 shelf images; 11,743 boxes across product and price classes
+    license: CC0 1.0 per publisher
+    default_pipeline: recommended_for_detector_baseline
+    url: https://humansintheloop.org/resources/datasets/supermarket-shelves-dataset/
+  agrifreshnet:
+    role: produce freshness transfer-learning baseline and three-grade classifier
+    access: Mendeley Data direct dataset download
+    size: 14,500 images; 24 produce classes; fresh, semi-fresh, and rotten labels
+    license: CC BY 4.0; provide attribution and record changes
+    default_pipeline: recommended_for_freshness_baseline
+    url: https://data.mendeley.com/datasets/42m5tb7yv9/1
+  fruitlife:
+    role: longitudinal spoilage-stage robustness check
+    access: Zenodo public record
+    size: 1,780 images over time across eight fruit species
+    license: CC BY 4.0 per dataset catalog
+    default_pipeline: optional_freshness_evaluation
+    url: https://doi.org/10.5281/zenodo.23118124
   open_food_facts_india:
     role: catalog metadata and reference-image discovery only
     access: public API; user agent and request etiquette required

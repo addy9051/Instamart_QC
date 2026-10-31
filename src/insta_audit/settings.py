@@ -1,4 +1,4 @@
-from functools import lru_cache
+﻿from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,11 +15,15 @@ class Settings(BaseSettings):
     ocr_det_model_dir: str | None = None
     ocr_rec_model_dir: str | None = None
     ocr_cls_model_dir: str | None = None
-    min_visual_similarity: float = 0.78
+    min_visual_similarity: float = 0.5
     max_weight_error_pct: float = 18.0
     max_image_bytes: int = 5_000_000
+    catalog_path: str = "data/catalog/skus.yaml"
+    # Serve the browser demo even when environment=production (public showcase deployment).
+    demo_ui: bool = False
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+

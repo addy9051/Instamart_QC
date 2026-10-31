@@ -8,7 +8,8 @@ def main() -> None:
     parser.add_argument("--data", type=Path, required=True, help="ImageFolder root with train/ and val/")
     parser.add_argument("--output", type=Path, default=Path("artifacts/freshness.ts"))
     parser.add_argument("--epochs", type=int, default=12)
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--batch-size", type=int, default=8, help="Use a small batch for GPUs with 4 GB VRAM")
+    parser.add_argument("--workers", type=int, default=2, help="DataLoader workers; use 0 on Windows if worker startup is unstable")
     args = parser.parse_args()
     try:
         import torch
@@ -27,28 +28,36 @@ def main() -> None:
     val_tf = transforms.Compose([transforms.Resize(256), transforms.CenterCrop(224), transforms.ToTensor(), transforms.Normalize(mean, std)])
     train_data = datasets.ImageFolder(args.data / "train", transform=train_tf)
     val_data = datasets.ImageFolder(args.data / "val", transform=val_tf)
-    if train_data.classes != ["fresh", "spoiled"] or val_data.classes != train_data.classes:
-        raise SystemExit("Expected ImageFolder class directories exactly: fresh/ and spoiled/")
+    normalize = lambda name: name.strip().lower().replace("-", "_").replace(" ", "_")
+    classes = [normalize(name) for name in train_data.classes]
+    allowed = ({"fresh", "spoiled"}, {"fresh", "rotten", "semi_fresh"})
+    if set(classes) not in allowed or [normalize(name) for name in val_data.classes] != classes:
+        raise SystemExit("Expected matching train/val folders: fresh + spoiled, or fresh + semi_fresh + rotten")
+    rotten_index = next(i for i, name in enumerate(classes) if name in {"spoiled", "rotten"})
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    val_loader = DataLoader(val_data, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    pin_memory = device == "cuda"
+    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=pin_memory)
+    val_loader = DataLoader(val_data, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=pin_memory)
     model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-    model.fc = nn.Linear(model.fc.in_features, 2)
+    model.fc = nn.Linear(model.fc.in_features, len(classes))
     model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4, weight_decay=1e-4)
     loss_fn = nn.CrossEntropyLoss()
     best_recall = -1.0
     best_metrics = {}
+    scaler = torch.amp.GradScaler("cuda", enabled=device == "cuda")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     for epoch in range(args.epochs):
         model.train()
         running = 0.0
         for images, labels in train_loader:
-            images, labels = images.to(device), labels.to(device)
+            images, labels = images.to(device, non_blocking=pin_memory), labels.to(device, non_blocking=pin_memory)
             optimizer.zero_grad(set_to_none=True)
-            loss = loss_fn(model(images), labels)
-            loss.backward()
-            optimizer.step()
+            with torch.amp.autocast(device_type=device, enabled=device == "cuda"):
+                loss = loss_fn(model(images), labels)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             running += loss.item() * images.size(0)
         model.eval()
         tp = fp = fn = correct = count = 0
@@ -58,9 +67,9 @@ def main() -> None:
                 pred = logits.argmax(1).cpu()
                 correct += int((pred == labels).sum())
                 count += len(labels)
-                tp += int(((pred == 1) & (labels == 1)).sum())
-                fp += int(((pred == 1) & (labels == 0)).sum())
-                fn += int(((pred == 0) & (labels == 1)).sum())
+                tp += int(((pred == rotten_index) & (labels == rotten_index)).sum())
+                fp += int(((pred == rotten_index) & (labels != rotten_index)).sum())
+                fn += int(((pred != rotten_index) & (labels == rotten_index)).sum())
         recall = tp / max(1, tp + fn)
         precision = tp / max(1, tp + fp)
         f1 = 2 * precision * recall / max(1e-12, precision + recall)
@@ -73,11 +82,11 @@ def main() -> None:
             model.to(device)
     metadata = {
         "architecture": "torchvision.resnet18",
-        "classes": train_data.classes,
+        "classes": classes,
         "input_size": [224, 224],
         "normalization_mean": list(mean),
         "normalization_std": list(std),
-        "selection_metric": "spoiled_recall",
+        "selection_metric": "rotten_or_spoiled_recall",
         "best_validation_metrics": best_metrics,
         "validation_data": str(args.data / "val"),
         "note": "Tune decision threshold on an untouched store/day set before deployment.",

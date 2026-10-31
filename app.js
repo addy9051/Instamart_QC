@@ -70,6 +70,29 @@ $('#match-catalog-image').addEventListener('click', async () => {
   finally{button.disabled=false;button.textContent='Analyze image →';}
 });
 
+$('#analyze-freshness').addEventListener('click', async () => {
+  const file = $('#freshness-image').files?.[0];
+  const button = $('#analyze-freshness'), output = $('#freshness-summary');
+  if (!file) { toast('Choose a produce image first'); return; }
+  button.disabled = true; button.textContent = 'Analyzing…';
+  output.textContent = 'Running the trained freshness classifier…';
+  try {
+    const bitmap = await createImageBitmap(file), maxSide = 1024;
+    const ratio = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * ratio));
+    canvas.height = Math.max(1, Math.round(bitmap.height * ratio));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close();
+    const imageBase64 = canvas.toDataURL('image/jpeg', .84).split(',')[1];
+    const response = await fetch('/v1/inward/freshness', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku:$('#inward-sku').value, image_base64:imageBase64})});
+    const result = await response.json(); if (!response.ok) throw new Error(result.detail || `HTTP ${response.status}`);
+    const label = (result.class_name || 'unknown').replaceAll('_',' ');
+    const badge = result.decision.replaceAll('_',' ').toUpperCase();
+    output.innerHTML = `<span class="match-result-state ${result.decision==='accept'?'pass':'review'}">${badge}</span><b>${label}</b><span>${result.confidence===null?'No model confidence':`Confidence ${(result.confidence*100).toFixed(1)}%`} · ${result.reason_codes.join(', ')}</span>`;
+  } catch (error) { output.textContent = `Could not run freshness model: ${error.message}`; }
+  finally { button.disabled = false; button.textContent = 'Analyze freshness →'; }
+});
+
 $$('.nav-item').forEach(btn=>btn.addEventListener('click',()=>{
   const page=btn.dataset.page; $$('.nav-item').forEach(b=>b.classList.toggle('active',b===btn)); $$('.page').forEach(p=>p.classList.toggle('active',p.id===`page-${page}`));
   const titles={packing:'PACKING STATION',inward:'INWARD QUALITY',economics:'LOSS & ROI'};$('#crumb-title').textContent=titles[page];window.scrollTo({top:0,behavior:'smooth'});

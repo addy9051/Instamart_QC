@@ -1,5 +1,6 @@
 import base64
 import io
+import json
 from pathlib import Path
 
 
@@ -11,6 +12,7 @@ class FreshnessClassifier:
         self.model = None
         self.torch = None
         self.transforms = None
+        self.classes = ["fresh", "spoiled"]
         if model_path and Path(model_path).is_file():
             try:
                 import torch
@@ -18,6 +20,10 @@ class FreshnessClassifier:
 
                 self.torch = torch
                 self.model = torch.jit.load(model_path, map_location="cpu").eval()
+                metadata_path = Path(model_path).with_suffix(Path(model_path).suffix + ".metadata.json")
+                if metadata_path.is_file():
+                    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                    self.classes = [self._normalize_class(name) for name in metadata.get("classes", self.classes)]
                 self.transforms = transforms.Compose([
                     transforms.Resize((224, 224)), transforms.ToTensor(),
                     transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
@@ -43,14 +49,20 @@ class FreshnessClassifier:
             with self.torch.inference_mode():
                 probabilities = self.model(tensor).softmax(dim=1)[0]
             score, index = probabilities.max(dim=0)
-            class_name = ["fresh", "spoiled"][int(index)]
+            class_name = self.classes[int(index)] if int(index) < len(self.classes) else "unknown"
             confidence = float(score)
             if confidence < self.threshold:
                 decision, reason = "review_required", "freshness_low_confidence"
-            elif class_name == "spoiled":
+            elif class_name in {"spoiled", "rotten"}:
                 decision, reason = "reject", "freshness_spoilage_detected"
-            else:
+            elif class_name == "fresh":
                 decision, reason = "accept", "freshness_pass"
+            else:
+                decision, reason = "hold", "freshness_intermediate_grade"
             return {"decision": decision, "class_name": class_name, "confidence": confidence, "reason_codes": [reason], "model_ready": True}
         except Exception:
             return {"decision": "review_required", "class_name": None, "confidence": None, "reason_codes": ["freshness_inference_error"], "model_ready": self.ready}
+
+    @staticmethod
+    def _normalize_class(name: str) -> str:
+        return name.strip().lower().replace("-", "_").replace(" ", "_")

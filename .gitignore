@@ -7,9 +7,14 @@ __pycache__/
 data/*
 !data/README.md
 !data/datasets.yaml
+!data/catalog/
+data/catalog/*
+!data/catalog/skus.yaml
 artifacts/
 runs/
 *.pt
 *.onnx
 *.engine
+*.zip
+amazon_pics/
 *.ts

@@ -23,7 +23,8 @@ def main() -> None:
     parser.add_argument("--source", type=Path, default=Path("data/inward/raw/agrifreshnet/processed/Processed Data"))
     parser.add_argument("--output", type=Path, default=Path("data/inward/freshness_model"))
     parser.add_argument("--manifest", type=Path, default=Path("data/inward/agrifreshnet_split_manifest.csv"))
-    parser.add_argument("--folds", type=int, default=5, help="5 folds gives an approximately 80/20 split")
+    parser.add_argument("--folds", type=int, default=5, help="5 folds gives approximately 60/20/20 train/val/test")
+    parser.add_argument("--dry-run", action="store_true", help="print split counts only; copy nothing, write no manifest")
     args = parser.parse_args()
 
     records = []
@@ -54,19 +55,33 @@ def main() -> None:
         group_sizes[record["group"]] += 1
     conflicts = [g for g, labels in group_labels.items() if len(labels) > 1]
 
-    # StratifiedGroupKFold keeps filename-linked augmented variants in one split.
+    # Groups whose filename appears under conflicting labels are unreliable: keep them out of every
+    # split (recorded as "excluded" in the manifest) so no label noise leaks into train/val/test.
+    # StratifiedGroupKFold keeps filename-linked augmented variants inside one split.
+    # Fold 0 -> test (never used for training or checkpoint selection), fold 1 -> val, rest -> train.
+    conflict_set = set(conflicts)
+    clean_idx = [i for i, r in enumerate(records) if r["group"] not in conflict_set]
     splitter = StratifiedGroupKFold(n_splits=args.folds, shuffle=True, random_state=42)
-    y = [r["stage"] for r in records]
-    groups = [r["group"] for r in records]
-    _, val_indices = next(splitter.split(records, y, groups))
-    val = set(int(i) for i in val_indices)
-    split_names = ["val" if i in val else "train" for i in range(len(records))]
+    y = [records[i]["stage"] for i in clean_idx]
+    groups = [records[i]["group"] for i in clean_idx]
+    folds = [idx for _, idx in splitter.split(clean_idx, y, groups)]
+    test = {clean_idx[k] for k in folds[0]}
+    val = {clean_idx[k] for k in folds[1]}
+    split_names = ["excluded" if records[i]["group"] in conflict_set else "test" if i in test
+                   else "val" if i in val else "train" for i in range(len(records))]
 
+    counts = Counter((split_names[i], record["stage"]) for i, record in enumerate(records))
+    if args.dry_run:
+        totals = {s: sum(v for (sp, _), v in counts.items() if sp == s) for s in ("train", "val", "test", "excluded")}
+        print("DRY RUN " + ", ".join(f"{s}={n}" for s, n in totals.items()) + f"; conflicting groups={len(conflicts)}")
+        for split in ("train", "val", "test"):
+            print(split + ": " + ", ".join(f"{cls}={counts[(split, cls)]}" for cls in expected))
+        return
     args.output.mkdir(parents=True, exist_ok=True)
     manifest_path = args.manifest
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     # The destination is generated output; refuse to mix it with an old, possibly different split.
-    if any((args.output / split / cls).exists() for split in ("train", "val") for cls in expected):
+    if any((args.output / split / cls).exists() for split in ("train", "val", "test") for cls in expected):
         raise SystemExit(f"Output folders already exist: {args.output}. Move them aside before rebuilding the split.")
 
     with manifest_path.open("w", newline="", encoding="utf-8") as f:
@@ -74,22 +89,24 @@ def main() -> None:
         writer.writeheader()
         for i, record in enumerate(records):
             split = split_names[i]
-            target = args.output / split / record["stage"] / record["path"].name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if target.exists():
-                raise SystemExit(f"Duplicate destination filename: {target}")
-            shutil.copy2(record["path"], target)
+            if split != "excluded":
+                target = args.output / split / record["stage"] / record["path"].name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists():
+                    raise SystemExit(f"Duplicate destination filename: {target}")
+                shutil.copy2(record["path"], target)
             writer.writerow({"split": split, "stage": record["stage"], "source_relative_path": record["relative"],
                              "original_filename": record["original_name"], "group_id": record["group"],
                              "group_label_conflict": str(len(group_labels[record["group"]]) > 1).lower()})
 
     counts = Counter((split_names[i], record["stage"]) for i, record in enumerate(records))
     print(f"Prepared {len(records)} images across {len(group_labels)} filename groups at {args.output}")
-    print(f"Split: train={sum(v for (s, _), v in counts.items() if s == 'train')}, val={sum(v for (s, _), v in counts.items() if s == 'val')}; conflicting-label groups={len(conflicts)}")
-    for split in ("train", "val"):
+    totals = {s: sum(v for (sp, _), v in counts.items() if sp == s) for s in ("train", "val", "test", "excluded")}
+    print("Split: " + ", ".join(f"{s}={n}" for s, n in totals.items()) + f"; conflicting-label groups={len(conflicts)} (excluded)")
+    for split in ("train", "val", "test"):
         print(split + ": " + ", ".join(f"{cls}={counts[(split, cls)]}" for cls in expected))
     if conflicts:
-        print(f"Review {len(conflicts)} groups marked group_label_conflict=true in {manifest_path}")
+        print(f"Excluded {len(conflicts)} groups marked group_label_conflict=true in {manifest_path}")
     print(f"Manifest: {manifest_path}")
 
 

@@ -4,7 +4,7 @@ const products = [
   { name: 'Fresh tomatoes · 500 g', sku: 'FNV-VEG-081', qty: 1, weight: 500, emoji: '🍅', color: '#d75a45', variant: 'Tomatoes' },
   { name: 'Amul paneer · 200 g', sku: '8901262171093', qty: 1, weight: 205, emoji: '🧀', color: '#e6c47a', variant: 'Paneer' },
 ];
-const state = { counts: products.map(() => 0), weight: 0, audited: 128, issues: 7, refund: 1240, issueOnOrder: false, drops: 0 };
+const state = { counts: products.map(() => 0), weight: 0, audited: 0, issues: 0, review: 0, issueOnOrder: false, drops: 0 };
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 function renderItems() {
@@ -16,7 +16,7 @@ function renderItems() {
     const mark = flagged ? '!' : done === p.qty ? '✓' : '·';
     return `<div class="item-row ${rowState}"><div class="item-thumb">${p.emoji}</div><div class="item-copy"><b>${p.name}</b><small>SKU ${p.sku}</small></div><span class="item-qty">${done}/${p.qty}</span><span class="item-check">${mark}</span></div>`;
   }).join('');
-  $('#item-progress').textContent = `${verified} / ${products.reduce((n,p)=>n+p.qty,0)} verified`;
+  $('#item-progress').textContent = `${verified} / ${products.reduce((n,p)=>n+p.qty,0)} added to bag`;
   $('#weight-total').textContent = `${state.weight.toLocaleString('en-IN')} g`;
 }
 function toast(message) { const t=$('#toast'); t.textContent=message; t.classList.add('show'); clearTimeout(toast.timer); toast.timer=setTimeout(()=>t.classList.remove('show'),2300); }
@@ -24,6 +24,47 @@ function updateSignals(vision, weight, labelVision, labelWeight, alert=false) {
   $('#vision-signal').textContent=labelVision; $('#scale-signal').textContent=labelWeight;
   $('#vision-meter').style.width=`${Math.max(4,Math.min(100,vision))}%`; $('#scale-meter').style.width=`${Math.max(4,Math.min(100,weight))}%`;
   $('#vision-meter').style.background=alert?'#dc8067':'#52b576'; $('#scale-meter').style.background=alert?'#dc8067':'#52b576';
+}
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+async function runApiAudit(expected, scenario, observedWeight) {
+  const isWrong = scenario === 'wrong', isExtra = scenario === 'extra';
+  const photo = $('#packing-photo')?.files[0];
+  const payload = {
+    event_id: `ui-${state.drops}`, order_id: 'IM-804921', expected_sku: expected.sku,
+    expected_unit_weight_g: expected.weight, expected_quantity: 1, observed_quantity: isExtra ? 2 : 1,
+    measured_weight_delta_g: isExtra ? expected.weight * 2 : observedWeight,
+    observed_sku: isWrong ? '8901491501061' : expected.sku,
+  };
+  if (photo) payload.crop_base64 = await fileToBase64(photo);
+  const started = performance.now();
+  let res;
+  try {
+    const response = await fetch('/v1/packing/audit', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    res = await response.json();
+  } catch (error) {
+    toast(`Audit API unreachable: ${error.message}`);
+    return;
+  }
+  $('#stat-latency').firstChild.textContent = Math.round(performance.now() - started);
+  state.audited++; $('#stat-audited').textContent = state.audited;
+  if (res.decision === 'hold') { state.issues++; $('#stat-issues').textContent = state.issues; }
+  if (res.decision === 'review_required') { state.review++; $('#stat-review').textContent = state.review; }
+  const flagged = res.decision === 'hold';
+  const similarity = res.visual_similarity;
+  $('#event-title').textContent = `Audit decision: ${res.decision}`;
+  $('#event-time').textContent = new Intl.DateTimeFormat('en-IN', {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false}).format(new Date());
+  $('#event-content').innerHTML = `<div class="event-detail"><div class="event-badge ${flagged ? 'flag' : 'pass'}">${flagged ? '!' : (res.decision === 'pass' ? 'OK' : '?')}</div><div class="event-copy"><b>${expected.name}</b><small>reasons: ${res.reason_codes.join(', ')} | inputs: scenario "${scenario}", manual weight ${payload.measured_weight_delta_g} g, ${photo ? 'photo supplied' : 'no photo, vision not run'}</small></div><span class="event-flag ${flagged ? 'flag' : ''}">${res.decision.toUpperCase()}</span></div>`;
+  updateSignals(similarity == null ? 0 : similarity * 100, Math.max(0, 100 - res.weight_error_pct),
+    similarity == null ? 'not run (no photo)' : `${(similarity * 100).toFixed(1)}%`, `${res.weight_error_pct}% off nominal`, flagged);
+  toast(`${res.decision}: ${res.reason_codes.join(', ')}`);
 }
 function audit(kind) {
   let idx = state.counts.findIndex((n,i)=>n<products[i].qty); if(idx<0) idx=0;
@@ -33,17 +74,10 @@ function audit(kind) {
   state.drops++;
   if (!isWrong || isExtra) { state.counts[idx]++; state.weight+=observedWeight; }
   const flagged=isWrong||isExtra;
-  if(flagged&&!state.issueOnOrder){state.issues++;state.refund+=Math.round(expected.weight/3);state.issueOnOrder=true;$('#stat-issues').textContent=state.issues;$('#stat-refund').textContent=`₹${state.refund.toLocaleString('en-IN')}`;}
-  state.audited++; $('#stat-audited').textContent=state.audited;
   renderItems();
   const frame=$('.camera-frame'); frame.classList.remove('scanning'); void frame.offsetWidth; frame.classList.add('scanning');
   if(!isWrong){const item=document.createElement('div');item.className='bag-product';item.style.background=p.color;item.textContent=p.emoji;$('#bag-items .bag-empty')?.remove();$('#bag-items').appendChild(item);}
-  const title=isWrong?'Variant mismatch caught':isExtra?'Quantity overage detected':'Item verified';
-  $('#event-title').textContent=title; $('#event-time').textContent=new Intl.DateTimeFormat('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());
-  $('#event-content').innerHTML=`<div class="event-detail"><div class="event-badge ${flagged?'flag':'pass'}">${flagged?'!':'✓'}</div><div class="event-copy"><b>${isWrong?p.variant+' detected':isExtra?'Extra '+expected.variant+' detected':expected.variant+' added to bag'}</b><small>${isWrong?`Expected ${expected.variant} · ${expected.weight} g / observed ${observedWeight} g`:`Visual match ${isWrong?'61.4':'94.8'}% · weight delta +${observedWeight} g`}</small></div><span class="event-flag ${flagged?'flag':''}">${flagged?'HOLD & REVIEW':'PASS'}</span></div>`;
-  updateSignals(isWrong?61:95,isExtra?88:97,isWrong?'61.4%':`${(94.1+(state.drops%5)*.2).toFixed(1)}%`,`${isExtra?'+':''}${observedWeight} g`,flagged);
-  if(flagged) toast(isWrong?'Wrong variant: hold for packer review':'Extra unit: quantity check flagged');
-  else toast(`${expected.variant} verified · ${observedWeight} g added`);
+  runApiAudit(expected, kind, observedWeight);
 }
 function resetOrder() { state.counts=products.map(()=>0);state.weight=0;state.issueOnOrder=false;state.drops=0;renderItems();$('#bag-items').innerHTML='<div class="bag-empty">DROP ITEMS<br>TO BEGIN</div>';$('#event-title').textContent='Waiting for first item';$('#event-time').textContent='—';$('#event-content').innerHTML='<div class="event-empty"><span>↗</span>Drop an item to see the vision and weight checks.</div>';updateSignals(0,0,'—','—');toast('Order reset · ready for next pack'); }
 $('#drop-correct').addEventListener('click',()=>audit('correct'));
@@ -111,7 +145,7 @@ $('#run-inward').addEventListener('click',()=>{
   const {days,pct,threshold}=updateRemaining(); const freshness=$('.produce-card.active')?.dataset.freshness||'Good';
   let pass=pct>=threshold && days>=0 && freshness==='Good'; let title=pass?'Accept batch':pct<0?'Expired batch':pct<threshold?'Shelf-life below policy':`${freshness} sample · review required`;
   let cls=pass?'pass':freshness==='Review'?'':'fail'; let detail=pass?'Expiry and condition are within the configured receiving checks.':freshness==='Review'?'Condition is uncertain. Route this sample to a receiving associate.':freshness==='Reject'?'Sample marked spoiled. Keep the batch out of pickable inventory.':`Received with ${pct}% remaining shelf life; policy requires ${threshold}%.`;
-  $('#inward-result').innerHTML=`<div class="decision-result"><span class="decision-badge ${pass?'pass':''}">${pass?'ACCEPT':'HOLD FOR REVIEW'}</span><div class="decision-header"><div class="decision-icon ${cls}">${pass?'✓':'!'}</div><div><h2>${title}</h2><p>${detail}</p></div></div><div class="decision-details"><div><small>OCR READ</small><b>${new Date(`${$('#expiry-date').value}T00:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</b></div><div><small>REMAINING LIFE</small><b>${pct}% · ${days} days</b></div><div><small>BATCH</small><b>${$('#batch-id').value||'—'}</b></div><div><small>FRESHNESS SAMPLE</small><b>${freshness}</b></div></div></div>`;
+  $('#inward-result').innerHTML=`<div class="decision-result"><span class="decision-badge ${pass?'pass':''}">${pass?'ACCEPT':'HOLD FOR REVIEW'}</span><div class="decision-header"><div class="decision-icon ${cls}">${pass?'✓':'!'}</div><div><h2>${title}</h2><p>${detail}</p></div></div><div class="decision-details"><div><small>DATE ENTERED (MANUAL)</small><b>${new Date(`${$('#expiry-date').value}T00:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</b></div><div><small>REMAINING LIFE</small><b>${pct}% · ${days} days</b></div><div><small>BATCH</small><b>${$('#batch-id').value||'—'}</b></div><div><small>FRESHNESS SAMPLE</small><b>${freshness}</b></div></div></div>`;
   toast(pass?'Receiving check passed':'Receiving check held for review');
 });
 $$('.produce-card').forEach(card=>card.addEventListener('click',()=>{

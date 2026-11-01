@@ -25,7 +25,7 @@ class FreshnessClassifier:
                     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
                     self.classes = [self._normalize_class(name) for name in metadata.get("classes", self.classes)]
                 self.transforms = transforms.Compose([
-                    transforms.Resize((224, 224)), transforms.ToTensor(),
+                    transforms.Resize(256), transforms.CenterCrop(224), transforms.ToTensor(),
                     transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
                 ])
             except (ImportError, RuntimeError, OSError):

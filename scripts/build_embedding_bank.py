@@ -23,7 +23,7 @@ def main() -> None:
     with args.catalog.open(encoding="utf-8") as stream:
         sku_ids = {str(row["sku"]) for row in yaml.safe_load(stream).get("skus", [])}
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    processor = AutoImageProcessor.from_pretrained(args.model)
+    processor = AutoImageProcessor.from_pretrained(args.model, use_fast=True)
     model = AutoModel.from_pretrained(args.model).to(device).eval()
     vectors: list[np.ndarray] = []
     labels: list[str] = []

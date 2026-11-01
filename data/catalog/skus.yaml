@@ -1,0 +1,654 @@
+version: 1
+skus:
+- sku: '8901719134845'
+  name: Parle-G Original Glucose Biscuits
+  brand: Parle
+  catalog_quantity: 65g
+  expected_unit_weight_g: 65
+  weight_verified: true
+  category: biscuits_and_bakery
+  anchor_images:
+  - data\anchors\8901719134845\catalog_front.jpg
+  - data\anchors\8901719134845\view_back_ingredients.jpg
+  - data\anchors\8901719134845\view_packaging.jpg
+  - data\anchors\8901719134845\view_side_nutrition.jpg
+- sku: '8901719134852'
+  name: Parle-G
+  brand: Parle
+  catalog_quantity: 90g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: biscuits_and_bakery
+  anchor_images:
+  - data\anchors\8901719134852\catalog_front.jpg
+- sku: '8902080000227'
+  name: Sting Energy
+  brand: Sting
+  catalog_quantity: '1'
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8902080000227\catalog_front.jpg
+- sku: '8901063139329'
+  name: bourbon
+  brand: britannia
+  catalog_quantity: 50g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: biscuits_and_bakery
+  anchor_images:
+  - data\anchors\8901063139329\catalog_front.jpg
+- sku: '8901058017687'
+  name: Kurkure Puffcorn Yummy Cheese
+  brand: Kurkure
+  catalog_quantity: 60g
+  expected_unit_weight_g: 60
+  weight_verified: true
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8901058017687\catalog_front.jpg
+  - data\anchors\8901058017687\view_side_nutrition.jpg
+- sku: '8901063162914'
+  name: Marie Gold Biscuit
+  brand: Britannia
+  catalog_quantity: 64 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: biscuits_and_bakery
+  anchor_images:
+  - data\anchors\8901063162914\catalog_front.jpg
+- sku: '8906010500559'
+  name: Mung Dal
+  brand: Balaji
+  catalog_quantity: 25 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: pantry_staples
+  anchor_images:
+  - data\anchors\8906010500559\catalog_front.jpg
+- sku: '8901764042911'
+  name: Thums up
+  brand: Thums up
+  catalog_quantity: 250 ml
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764042911\catalog_front.jpg
+- sku: '8906010500245'
+  name: Balaji Wafers Masala Sev Murmura
+  brand: Balaji Wafers
+  catalog_quantity: 40 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: pantry_staples
+  anchor_images:
+  - data\anchors\8906010500245\catalog_front.jpg
+- sku: '8906010502232'
+  name: Balaji wafers panjabi tadka
+  brand: Balaji
+  catalog_quantity: 22g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8906010502232\catalog_front.jpg
+- sku: '8906010500900'
+  name: Wheelos Masala Flavour
+  brand: Balaji Wafers
+  catalog_quantity: 22 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8906010500900\catalog_front.jpg
+- sku: '8901764032912'
+  name: Sprite
+  brand: Coca-Cola, Sprite
+  catalog_quantity: 250 ml
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764032912\catalog_front.jpg
+- sku: '8906010500023'
+  name: POTATO WAFERS
+  brand: Balaji
+  catalog_quantity: ''
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8906010500023\catalog_front.jpg
+- sku: '8901058000290'
+  name: Kurkure Masala Munch
+  brand: Kurkure
+  catalog_quantity: 80g
+  expected_unit_weight_g: 80
+  weight_verified: true
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8901058000290\catalog_front.jpg
+  - data\anchors\8901058000290\view_back_ingredients.jpg
+  - data\anchors\8901058000290\view_packaging.jpg
+  - data\anchors\8901058000290\view_side_nutrition.jpg
+- sku: '8904043901015'
+  name: Tata Salt Vacuum Evaporated 1kg
+  brand: Tata
+  catalog_quantity: 1000g
+  expected_unit_weight_g: 1000
+  weight_verified: true
+  category: pantry_staples
+  anchor_images:
+  - data\anchors\8904043901015\catalog_front.jpg
+  - data\anchors\8904043901015\view_back_ingredients.jpg
+  - data\anchors\8904043901015\view_packaging.jpg
+  - data\anchors\8904043901015\view_side_nutrition.jpg
+- sku: '8901063092853'
+  name: Good Day cashew cookie
+  brand: Britannia
+  catalog_quantity: 30.2 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: biscuits_and_bakery
+  anchor_images:
+  - data\anchors\8901063092853\catalog_front.jpg
+- sku: '8906017290040'
+  name: Bisleri 1ltr MADE IN INDIA
+  brand: Bisleri
+  catalog_quantity: '1'
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8906017290040\catalog_front.jpg
+- sku: '8901719129988'
+  name: Happy happy - Parl
+  brand: Parle
+  catalog_quantity: 31.5 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: biscuits_and_bakery
+  anchor_images:
+  - data\anchors\8901719129988\catalog_front.jpg
+- sku: '8901491100519'
+  name: Kurkure
+  brand: Kurkure
+  catalog_quantity: 78 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8901491100519\catalog_front.jpg
+- sku: '8901030921667'
+  name: kissan
+  brand: Kissan
+  catalog_quantity: '1'
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: condiments_and_spreads
+  anchor_images:
+  - data\anchors\8901030921667\catalog_front.jpg
+- sku: '8901764092206'
+  name: Maaza
+  brand: Mazza, The Coca-Cola Company
+  catalog_quantity: 600 ml
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764092206\catalog_front.jpg
+- sku: '8901030535895'
+  name: Bru Instant Coffee
+  brand: Bru
+  catalog_quantity: 1.2 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: tea_coffee_and_mixes
+  anchor_images:
+  - data\anchors\8901030535895\catalog_front.jpg
+- sku: '8901764082405'
+  name: Kinley Mineral Water 1ltr
+  brand: Kinley
+  catalog_quantity: '6'
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764082405\catalog_front.jpg
+- sku: '8901030897542'
+  name: kissan fresh tomato
+  brand: Kissan
+  catalog_quantity: 90g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: condiments_and_spreads
+  anchor_images:
+  - data\anchors\8901030897542\catalog_front.jpg
+- sku: '8906010500337'
+  name: Aloo Sev
+  brand: Balaji
+  catalog_quantity: 22g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8906010500337\catalog_front.jpg
+- sku: '8901063029255'
+  name: Jimjam 57g (57)
+  brand: Britannia
+  catalog_quantity: 57 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: biscuits_and_bakery
+  anchor_images:
+  - data\anchors\8901063029255\catalog_front.jpg
+- sku: '8901262010016'
+  name: Amul Pasteurized Butter 100g
+  brand: Amul
+  catalog_quantity: 100g
+  expected_unit_weight_g: 100
+  weight_verified: true
+  category: dairy
+  anchor_images:
+  - data\anchors\8901262010016\catalog_front.jpg
+  - data\anchors\8901262010016\view_back_ingredients.jpg
+  - data\anchors\8901262010016\view_side_nutrition.jpg
+- sku: '8901764042904'
+  name: Thumsup
+  brand: Coca-Cola
+  catalog_quantity: 1 litter
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764042904\catalog_front.jpg
+- sku: '8901262200196'
+  name: Amul Fresh Malai Paneer 200g
+  brand: Amul
+  catalog_quantity: 200g
+  expected_unit_weight_g: 200
+  weight_verified: true
+  category: dairy
+  anchor_images:
+  - data\anchors\8901262200196\catalog_front.jpg
+  - data\anchors\8901262200196\view_back_ingredients.jpg
+  - data\anchors\8901262200196\view_packaging.jpg
+  - data\anchors\8901262200196\view_side_nutrition.jpg
+- sku: '8901764032707'
+  name: Sprite
+  brand: Coca Cola
+  catalog_quantity: 600 ml
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764032707\catalog_front.jpg
+- sku: '8906010502294'
+  name: Flaming hot nachos
+  brand: ''
+  catalog_quantity: ''
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8906010502294\catalog_front.jpg
+- sku: '8906010500078'
+  name: Balaji Farali Chivda
+  brand: Balaji Namkeen
+  catalog_quantity: 22g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8906010500078\catalog_front.jpg
+- sku: '8901491366052'
+  name: Puffcorn
+  brand: Kurkure
+  catalog_quantity: 58 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8901491366052\catalog_front.jpg
+- sku: '8901719135248'
+  name: Parle-G Gold Biscuits
+  brand: Parle
+  catalog_quantity: 100g
+  expected_unit_weight_g: 100
+  weight_verified: true
+  category: biscuits_and_bakery
+  anchor_images:
+  - data\anchors\8901719135248\catalog_front.jpg
+  - data\anchors\8901719135248\view_back_ingredients.jpg
+  - data\anchors\8901719135248\view_side_nutrition.jpg
+- sku: '8906010501570'
+  name: Balaji Wafers Crunchex
+  brand: Balaji
+  catalog_quantity: 32g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8906010501570\catalog_front.jpg
+- sku: '8901595862962'
+  name: Schezwan Chutney
+  brand: Ching's Secret
+  catalog_quantity: 250 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: condiments_and_spreads
+  anchor_images:
+  - data\anchors\8901595862962\catalog_front.jpg
+- sku: '8901058005233'
+  name: Kurkure Green Chutney Style
+  brand: Kurkure
+  catalog_quantity: 75g
+  expected_unit_weight_g: 75
+  weight_verified: true
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8901058005233\catalog_front.jpg
+  - data\anchors\8901058005233\view_back_ingredients.jpg
+  - data\anchors\8901058005233\view_packaging.jpg
+  - data\anchors\8901058005233\view_side_nutrition.jpg
+- sku: '8901030921797'
+  name: kissan fresh tomato
+  brand: Kissan, Unilever
+  catalog_quantity: ''
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: condiments_and_spreads
+  anchor_images:
+  - data\anchors\8901030921797\catalog_front.jpg
+- sku: '8902080104581'
+  name: Pepsi
+  brand: Pepsi Cola
+  catalog_quantity: 400ml
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8902080104581\catalog_front.jpg
+- sku: '8901719135118'
+  name: MONACO
+  brand: Parle
+  catalog_quantity: ''
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: biscuits_and_bakery
+  anchor_images:
+  - data\anchors\8901719135118\catalog_front.jpg
+- sku: '8901764032905'
+  name: Sprite
+  brand: Coca cola, Sprite
+  catalog_quantity: 2.25l
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764032905\catalog_front.jpg
+- sku: '89080153'
+  name: Maggi Masala-ae-Magic Seasoning 6g
+  brand: Nestle Maggi
+  catalog_quantity: 6g
+  expected_unit_weight_g: 6
+  weight_verified: true
+  category: condiments_and_spreads
+  anchor_images:
+  - data\anchors\89080153\catalog_front.jpg
+  - data\anchors\89080153\view_back_ingredients.jpg
+  - data\anchors\89080153\view_side_nutrition.jpg
+- sku: '8901491361026'
+  name: Lay's Spanish Tomato Tango
+  brand: Lay's
+  catalog_quantity: 50g
+  expected_unit_weight_g: 50
+  weight_verified: true
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8901491361026\catalog_front.jpg
+  - data\anchors\8901491361026\view_back_ingredients.jpg
+  - data\anchors\8901491361026\view_packaging.jpg
+  - data\anchors\8901491361026\view_side_nutrition.jpg
+- sku: '8904272600291'
+  name: Storia 100% Tender Coconut Water 1L
+  brand: Storia Foods & Beverages
+  catalog_quantity: '10'
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8904272600291\catalog_front.jpg
+- sku: '8901262260121'
+  name: Amul Taaza Toned Milk Pouch 500ml
+  brand: Amul
+  catalog_quantity: 515g
+  expected_unit_weight_g: 515
+  weight_verified: true
+  category: dairy
+  anchor_images:
+  - data\anchors\8901262260121\catalog_front.jpg
+  - data\anchors\8901262260121\view_back_ingredients.jpg
+  - data\anchors\8901262260121\view_side_nutrition.jpg
+- sku: '8901764092305'
+  name: Maaza Origina
+  brand: HINDUSTAN COCA-COLA BEVERAGES PVT LTD.
+  catalog_quantity: 1.2L
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764092305\catalog_front.jpg
+- sku: '8901725016258'
+  name: Haldiram's Bhujia Sev
+  brand: Haldiram's
+  catalog_quantity: 150g
+  expected_unit_weight_g: 150
+  weight_verified: true
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8901725016258\catalog_front.jpg
+- sku: '8906010500863'
+  name: Shing Bhujiya - Nimbu Chatka
+  brand: Balaji Wafers
+  catalog_quantity: 24g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8906010500863\catalog_front.jpg
+- sku: '8901764061257'
+  name: Diet Coke Can 250ml
+  brand: Coke
+  catalog_quantity: '4'
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764061257\catalog_front.jpg
+- sku: '8901764042706'
+  name: Thumsup
+  brand: Cola
+  catalog_quantity: 740ml
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764042706\catalog_front.jpg
+- sku: '8901764362804'
+  name: Pulpy Orange
+  brand: Minute Maid
+  catalog_quantity: 250ml
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764362804\catalog_front.jpg
+- sku: '8901719123870'
+  name: Parle-G 250g
+  brand: Parle
+  catalog_quantity: 250 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: biscuits_and_bakery
+  anchor_images:
+  - data\anchors\8901719123870\catalog_front.jpg
+- sku: '8906010500214'
+  name: Balaji Wafers Sev Murmura
+  brand: Balaji Wafers
+  catalog_quantity: 25g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: pantry_staples
+  anchor_images:
+  - data\anchors\8906010500214\catalog_front.jpg
+- sku: '8906032018513'
+  name: Doodh Biscuits
+  brand: Patanjali
+  catalog_quantity: 35 g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: dairy
+  anchor_images:
+  - data\anchors\8906032018513\catalog_front.jpg
+- sku: '8906010500016'
+  name: Balaji Wafers Simply Salted
+  brand: Balaji
+  catalog_quantity: 50g
+  expected_unit_weight_g: 50
+  weight_verified: true
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8906010500016\catalog_front.jpg
+  - data\anchors\8906010500016\view_back_ingredients.jpg
+  - data\anchors\8906010500016\view_side_nutrition.jpg
+- sku: '8901491001168'
+  name: Lay's Classic Salted
+  brand: Lay's
+  catalog_quantity: 50g
+  expected_unit_weight_g: 50
+  weight_verified: true
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8901491001168\catalog_front.jpg
+  - data\anchors\8901491001168\view_back_ingredients.jpg
+  - data\anchors\8901491001168\view_side_nutrition.jpg
+- sku: '8901725118938'
+  name: Haldiram's Aloo Bhujia
+  brand: Haldiram's
+  catalog_quantity: 150g
+  expected_unit_weight_g: 150
+  weight_verified: true
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8901725118938\catalog_front.jpg
+  - data\anchors\8901725118938\view_back_ingredients.jpg
+  - data\anchors\8901725118938\view_side_nutrition.jpg
+- sku: '8901764042300'
+  name: Thums Up
+  brand: Coca-Cola
+  catalog_quantity: ''
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764042300\catalog_front.jpg
+- sku: '8901764032301'
+  name: Sprite
+  brand: Sprite
+  catalog_quantity: 1 L
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: beverages
+  anchor_images:
+  - data\anchors\8901764032301\catalog_front.jpg
+- sku: '8901030831690'
+  name: kissan mixed fruit jam
+  brand: kissan
+  catalog_quantity: 200g
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: condiments_and_spreads
+  anchor_images:
+  - data\anchors\8901030831690\catalog_front.jpg
+- sku: '8901719130014'
+  name: Parle Happy Happy Choco Chip
+  brand: Parle
+  catalog_quantity: 60g
+  expected_unit_weight_g: 60
+  weight_verified: true
+  category: biscuits_and_bakery
+  anchor_images:
+  - data\anchors\8901719130014\catalog_front.jpg
+  - data\anchors\8901719130014\view_back_ingredients.jpg
+- sku: '8901491101844'
+  name: Lay's India's Magic Masala
+  brand: Lay's
+  catalog_quantity: 50g
+  expected_unit_weight_g: 50
+  weight_verified: true
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8901491101844\catalog_front.jpg
+  - data\anchors\8901491101844\view_back_ingredients.jpg
+  - data\anchors\8901491101844\view_side_nutrition.jpg
+- sku: '8904004400731'
+  name: Aloo Bhujia Sev
+  brand: Haldiram's
+  catalog_quantity: 200 gm
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8904004400731\catalog_front.jpg
+- sku: '8904004403718'
+  name: Moong Dal
+  brand: Haldiram's
+  catalog_quantity: '18'
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: pantry_staples
+  anchor_images:
+  - data\anchors\8904004403718\catalog_front.jpg
+- sku: '8901499008169'
+  name: Chocos
+  brand: Kellogg's
+  catalog_quantity: ','
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8901499008169\catalog_front.jpg
+- sku: '8906010500818'
+  name: Potato chips
+  brand: Balaji
+  catalog_quantity: 100 gram
+  expected_unit_weight_g: null
+  weight_verified: false
+  category: snacks_and_namkeen
+  anchor_images:
+  - data\anchors\8906010500818\catalog_front.jpg
+- sku: '8901058842722'
+  name: Maggi 2-Minute Masala Instant Noodles 70g
+  brand: Nestle Maggi
+  category: pantry_staples
+  catalog_quantity: 70g
+  expected_unit_weight_g: 70
+  weight_verified: true
+  anchor_images:
+  - data\anchors\8901058842722\catalog_front.jpg
+  - data\anchors\8901058842722\view_back_ingredients.jpg
+  - data\anchors\8901058842722\view_side_nutrition.jpg
+- sku: '8901058898422'
+  name: Maggi Special Masala Noodles 70g
+  brand: Nestle Maggi
+  category: pantry_staples
+  catalog_quantity: 70g
+  expected_unit_weight_g: 70
+  weight_verified: true
+  anchor_images:
+  - data\anchors\8901058898422\catalog_front.jpg
+  - data\anchors\8901058898422\view_back_ingredients.jpg
+  - data\anchors\8901058898422\view_side_nutrition.jpg

@@ -1,6 +1,7 @@
 README.md
 pyproject.toml
 src/insta_audit/__init__.py
+src/insta_audit/catalog.py
 src/insta_audit/decision.py
 src/insta_audit/schemas.py
 src/insta_audit/settings.py
@@ -23,3 +24,5 @@ src/insta_audit/vision/__init__.py
 src/insta_audit/vision/embedder.py
 src/insta_audit/vision/sku_bank.py
 src/insta_audit/vision/tracking.py
+tests/test_api.py
+tests/test_core.py

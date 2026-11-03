@@ -1,6 +1,10 @@
-﻿from functools import lru_cache
+from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Source-tree root (…/src/insta_audit/settings.py -> repo root). Only valid for editable/source installs.
+_SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -8,6 +12,10 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     api_key: str | None = None
+    # Directory holding configs/, data/ and the demo UI files. Unset -> source tree if it has
+    # configs/, else the current working directory (the Docker images use WORKDIR /app).
+    project_root: str | None = None
+    policy_path: str = "configs/quality_policy.yaml"
     sku_bank_path: str = "artifacts/sku_bank.npz"
     embedding_model_path: str | None = None
     freshness_model_path: str | None = None
@@ -19,11 +27,48 @@ class Settings(BaseSettings):
     max_weight_error_pct: float = 18.0
     max_image_bytes: int = 5_000_000
     catalog_path: str = "data/catalog/skus.yaml"
-    # Serve the browser demo even when environment=production (public showcase deployment).
+    # Serve the browser demo files (index.html, app.js, css) even when environment=production.
+    # This only controls static files; it does NOT disable API authentication.
     demo_ui: bool = False
+    # Explicit opt-in to run production WITHOUT an API key (public showcase). Turns on per-client
+    # rate limiting, a smaller image cap, and bounded inference concurrency.
+    public_demo: bool = False
+    public_demo_max_image_bytes: int = 1_500_000
+    # Requests per minute per client on /v1/*. None -> 30 in public_demo mode, otherwise disabled (0).
+    rate_limit_per_minute: int | None = None
+    max_concurrent_inference: int = 2
+    inference_wait_seconds: float = 10.0
+
+    @property
+    def root(self) -> Path:
+        if self.project_root:
+            return Path(self.project_root).resolve()
+        if (_SOURCE_ROOT / "configs" / "quality_policy.yaml").is_file():
+            return _SOURCE_ROOT
+        return Path.cwd().resolve()
+
+    def resolve(self, value: str | None) -> str | None:
+        """Absolute paths pass through; relative paths resolve against the project root when that
+        file/dir exists there, else stay as given (e.g. a Hugging Face model id)."""
+        if not value:
+            return value
+        path = Path(value)
+        if path.is_absolute():
+            return str(path)
+        candidate = self.root / path
+        return str(candidate) if candidate.exists() else value
+
+    @property
+    def effective_rate_limit(self) -> int:
+        if self.rate_limit_per_minute is not None:
+            return max(0, self.rate_limit_per_minute)
+        return 30 if self.public_demo else 0
+
+    @property
+    def effective_max_image_bytes(self) -> int:
+        return min(self.max_image_bytes, self.public_demo_max_image_bytes) if self.public_demo else self.max_image_bytes
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

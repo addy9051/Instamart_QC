@@ -1,5 +1,8 @@
 import base64
 import io
+import logging
+
+logger = logging.getLogger("insta_audit.vision.embedder")
 
 
 class DinoEmbedder:
@@ -7,6 +10,8 @@ class DinoEmbedder:
 
     def __init__(self, model_path: str | None = None) -> None:
         self.processor = self.model = self.torch = None
+        self.model_path = model_path
+        self.dimension: int | None = None
         if not model_path:
             return
         try:
@@ -16,8 +21,11 @@ class DinoEmbedder:
             self.torch = torch
             self.processor = AutoImageProcessor.from_pretrained(model_path, local_files_only=True)
             self.model = AutoModel.from_pretrained(model_path, local_files_only=True).eval()
-        except (ImportError, OSError, RuntimeError):
+            self.dimension = int(getattr(getattr(self.model, "config", None), "hidden_size", 384))
+        except (ImportError, OSError, RuntimeError) as exc:
+            logger.warning("Could not load embedding model from %s: %s", model_path, exc)
             self.processor = self.model = self.torch = None
+            self.dimension = None
 
     @property
     def ready(self) -> bool:
@@ -31,6 +39,7 @@ class DinoEmbedder:
 
             image = Image.open(io.BytesIO(base64.b64decode(encoded, validate=True)))
             if image.width * image.height > 25_000_000:
+                logger.warning("Image pixel count exceeds 25M limit: %dx%d", image.width, image.height)
                 return None
             image = image.convert("RGB")
             inputs = self.processor(images=image, return_tensors="pt")
@@ -38,5 +47,6 @@ class DinoEmbedder:
                 vector = self.model(**inputs).last_hidden_state[:, 0]
                 vector = self.torch.nn.functional.normalize(vector, dim=1)[0]
             return vector.cpu().tolist()
-        except Exception:
+        except Exception as exc:
+            logger.error("Failed to generate embedding from base64 image: %s", exc)
             return None

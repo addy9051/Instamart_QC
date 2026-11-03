@@ -1,40 +1,40 @@
 {
   "disclaimer": "Synthetic same-source stress test on public catalog photos; not store performance.",
-  "skus": 49,
-  "events": 588,
+  "skus": 54,
+  "events": 648,
   "augmentation_strength": 1.0,
   "threshold": 0.5,
-  "top1_retrieval_under_corruption": 0.8639,
-  "false_hold_rate": 0.2109,
+  "top1_retrieval_under_corruption": 0.8704,
+  "false_hold_rate": 0.1481,
   "scenarios": {
     "correct": {
       "truth": "pass",
-      "n": 147,
-      "hold": 31,
-      "pass": 116,
+      "n": 162,
+      "hold": 24,
+      "pass": 138,
       "review_required": 0,
-      "correct_rate": 0.7891
+      "correct_rate": 0.8519
     },
     "variant_swap": {
       "truth": "hold",
-      "n": 147,
-      "hold": 146,
-      "pass": 1,
+      "n": 162,
+      "hold": 162,
+      "pass": 0,
       "review_required": 0,
-      "correct_rate": 0.9932
+      "correct_rate": 1.0
     },
     "missing_unit": {
       "truth": "hold",
-      "n": 147,
-      "hold": 147,
+      "n": 162,
+      "hold": 162,
       "pass": 0,
       "review_required": 0,
       "correct_rate": 1.0
     },
     "weight_anomaly": {
       "truth": "hold",
-      "n": 147,
-      "hold": 147,
+      "n": 162,
+      "hold": 162,
       "pass": 0,
       "review_required": 0,
       "correct_rate": 1.0

@@ -1,5 +1,12 @@
-version: 1
+version: 2
 # Values are example policy inputs. Replace with the retailer's signed-off rules.
+#
+# Remaining-life % = days left at receiving / total shelf life. Total shelf life comes from, in order:
+#   1. the pack's own manufacture -> expiry dates when both are read ("pack_label"),
+#   2. skus.<sku>.reference_shelf_life_days ("sku_reference"),
+#   3. categories.<category>.reference_shelf_life_days ("category_reference").
+# Category keys must cover every `category` used in data/catalog/skus.yaml and configs/skus.yaml
+# (enforced by tests/test_core.py::test_policy_covers_catalog_categories).
 categories:
   dairy:
     min_remaining_life_pct: 70
@@ -7,9 +14,32 @@ categories:
   bakery:
     min_remaining_life_pct: 70
     reference_shelf_life_days: 5
+  biscuits_and_bakery:
+    min_remaining_life_pct: 50
+    reference_shelf_life_days: 180
   packaged:
+    min_remaining_life_pct: 50
+    reference_shelf_life_days: 365
+  snacks_and_namkeen:
+    min_remaining_life_pct: 50
+    reference_shelf_life_days: 120
+  beverages:
+    min_remaining_life_pct: 50
+    reference_shelf_life_days: 180
+  pantry_staples:
+    min_remaining_life_pct: 50
+    reference_shelf_life_days: 270
+  condiments_and_spreads:
+    min_remaining_life_pct: 50
+    reference_shelf_life_days: 270
+  tea_coffee_and_mixes:
     min_remaining_life_pct: 50
     reference_shelf_life_days: 365
   produce:
     min_remaining_life_pct: 0
     reference_shelf_life_days: 7
+
+# Optional per-SKU overrides; keys are SKU ids. Any field set here overrides the category value.
+skus:
+  "8901262150012":  # Amul Taaza Milk 500 ml (pouch milk: short shelf life)
+    reference_shelf_life_days: 3

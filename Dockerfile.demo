@@ -3,7 +3,7 @@
 # Run:    docker run -p 8080:8080 insta-audit-demo      (Render/Fly/HF Spaces: use $PORT / 7860)
 FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HOME=/opt/hf \
-    INSTA_AUDIT_ENVIRONMENT=production INSTA_AUDIT_DEMO_UI=true \
+    INSTA_AUDIT_ENVIRONMENT=production INSTA_AUDIT_DEMO_UI=true INSTA_AUDIT_PUBLIC_DEMO=true \
     INSTA_AUDIT_SKU_BANK_PATH=artifacts/sku_bank.npz \
     INSTA_AUDIT_CATALOG_PATH=data/catalog/skus.yaml \
     INSTA_AUDIT_FRESHNESS_MODEL_PATH=artifacts/freshness.ts \

@@ -12,6 +12,24 @@ The browser UI is served by FastAPI. Catalog image matching and produce freshnes
 
 The suggested public datasets are not interchangeable or automatically production-licensed. Products-10K and RPC are non-commercial research datasets; MVTec D2S has separate access and license terms. They are not silently downloaded or used by the default pipeline. Open Food Facts can provide India-market grocery metadata and reference photos, subject to ODbL / CC BY-SA attribution and share-alike obligations. Its catalog is not verified against Instamart's assortment, and its photos are not a substitute for real packing-camera views. For commercial deployment, use appropriately licensed assets and a store-owned, consented, annotated evaluation set.
 
+## Product direction (summary)
+
+The concept has been repositioned from "visual SKU verification of every item" to **proof-of-pack and order-completeness assurance for dark stores**. Full design, formulas, release gates, and pilot plan are in [`docs/product_direction.md`](docs/product_direction.md). Most items below are planned; section 12 of that document lists what is implemented today.
+
+| # | Issue in the original idea | Revised approach |
+|---|---|---|
+| I1 | Visual SKU checks duplicate the picker's barcode scan | Barcode-first: trust the scan for identity and audit it (scanned-not-bagged, bagged-twice, quantity, produce, damage, near-expiry) |
+| I2 | Unverifiable "missing item" refund claims ignored | Tamper-evident **proof-of-pack** bundle per bag (drop keyframes, seal frame, seal weight, scan list, hash chain) for CX disputes |
+| I3 | Per-item false holds break the 10-minute SLA | `off / shadow / advisory / enforce` modes with kill switch; hold only on high-confidence + high-cost errors; per-*order* false-hold gate (≤0.5–1%) and zero seconds added for correct orders |
+| I4 | Per-item weight deltas are unreliable in real packing | One settled **seal-time weighing** per bag against an expected gross band built from measured per-SKU gross mean/std; ranges for variable-weight items |
+| I5 | No unit economics | Cost-per-order vs. benefit-per-order model; hardware tiers T0 (scale only) → T1 (+ camera, CPU) → T2 (+ edge GPU), upgrading only on measured value |
+| I6 | Static SKU bank can't keep up with catalog churn | Multi-view + weight **enrollment at GRN**, first-party catalog bootstrap, packaging-change detection, lookalike groups, scan + weight fallback for unenrolled SKUs |
+| I7 | Generic single-image freshness label ≠ FnV receiving QC | Per-commodity specs, crate sampling, "% defective by type" mapped to accept / discount / reject; current model is triage only |
+| I8 | Expiry OCR at GRN duplicates ASN/WMS data | OCR verifies ASN expiry on a sample; new **pick-time near-expiry** check against per-SKU customer minimums; FEFO violation metric |
+| I9 | Camera surveillance and DPDP Act 2023 risk | Bag-mouth ROI only, on-edge face/label redaction, purpose limitation (no individual performance scoring), short retention, RBAC, privacy impact assessment before the pilot |
+
+Rollout follows a staged pilot: baseline → shadow T0 → shadow T1 → advisory with a matched control store → selective enforce.
+
 ## Repository map
 
 - `src/insta_audit/api`: FastAPI health, packing audit, and inwarding endpoints.
@@ -70,4 +88,4 @@ OCR remains unloaded unless `INSTA_AUDIT_ENABLE_OCR=true` and local PaddleOCR de
 - `POST /v1/inward/expiry` — optional close-up image or recognized text plus received date and category. Set `INSTA_AUDIT_ENABLE_OCR=true` to load the optional OCR adapter.
 - `POST /v1/inward/freshness` — produce image for condition triage.
 
-See `docs/architecture.md` and the OpenAPI page at `/docs` after starting the service. Integrate camera, scale, order service, and secure event transport through store-specific adapters; do not expose the demo server directly to a public network. The Docker image is API-only; install the matching `[vision]` / `[ocr]` extras and mount reviewed local model artifacts to enable those adapters. In production mode, set `INSTA_AUDIT_API_KEY`.
+See `docs/product_direction.md`, `docs/architecture.md`, and the OpenAPI page at `/docs` after starting the service. Integrate camera, scale, order service, and secure event transport through store-specific adapters; do not expose the demo server directly to a public network. The Docker image is API-only; install the matching `[vision]` / `[ocr]` extras and mount reviewed local model artifacts to enable those adapters. In production mode, set `INSTA_AUDIT_API_KEY`.

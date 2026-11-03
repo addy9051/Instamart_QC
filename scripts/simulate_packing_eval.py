@@ -48,7 +48,7 @@ def main() -> None:
     ap.add_argument("--model", default="facebook/dinov2-small")
     ap.add_argument("--per-sku", type=int, default=3)
     ap.add_argument("--strength", type=float, default=1.0)
-    ap.add_argument("--threshold", type=float, default=0.78)
+    ap.add_argument("--threshold", type=float, default=0.50)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--output", type=Path, default=Path("docs/eval_results.json"))
     args = ap.parse_args()
@@ -56,16 +56,18 @@ def main() -> None:
     import torch
     from transformers import AutoImageProcessor, AutoModel
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     rng = random.Random(args.seed)
     catalog = {k: v for k, v in load_catalog(args.catalog).items() if v["unit_weight_g"]}
     bank = SkuBank(args.bank)
-    proc = AutoImageProcessor.from_pretrained(args.model)
-    model = AutoModel.from_pretrained(args.model).eval()
+    proc = AutoImageProcessor.from_pretrained(args.model, use_fast=True)
+    model = AutoModel.from_pretrained(args.model).to(device).eval()
 
     def embed(img: Image.Image) -> list[float]:
         with torch.inference_mode():
-            v = model(**proc(images=img, return_tensors="pt")).last_hidden_state[:, 0]
-            return torch.nn.functional.normalize(v, dim=1)[0].tolist()
+            inputs = proc(images=img, return_tensors="pt").to(device)
+            v = model(**inputs).last_hidden_state[:, 0]
+            return torch.nn.functional.normalize(v, dim=1)[0].cpu().tolist()
 
     skus = [s for s in catalog if (args.anchors / s / "catalog_front.jpg").is_file()]
     images = {s: Image.open(args.anchors / s / "catalog_front.jpg") for s in skus}

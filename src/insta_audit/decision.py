@@ -6,17 +6,22 @@ def audit_drop(payload: dict, bank: SkuBank, min_similarity: float, default_weig
     observed_sku = payload.get("observed_sku")
     similarity = None
     model_ready = bank.ready
+    reasons: list[str] = []
+
     if payload.get("visual_embedding") is not None:
-        result = bank.match(payload["visual_embedding"])
-        if result:
-            observed_sku, similarity = result
+        try:
+            result = bank.match(payload["visual_embedding"])
+            if result:
+                observed_sku, similarity = result
+        except ValueError:
+            reasons.append("embedding_dimension_mismatch")
 
     quantity_delta = int(payload["observed_quantity"]) - int(payload["expected_quantity"])
     observed_weight = float(payload["measured_weight_delta_g"])
     expected_weight = float(payload["expected_unit_weight_g"]) * max(1, int(payload["observed_quantity"]))
     weight_error = abs(observed_weight - expected_weight) / expected_weight * 100.0
     tolerance = float(payload.get("max_weight_error_pct") or default_weight_error_pct)
-    reasons: list[str] = []
+
     if quantity_delta < 0:
         reasons.append("quantity_short")
     elif quantity_delta > 0:
@@ -36,6 +41,7 @@ def audit_drop(payload: dict, bank: SkuBank, min_similarity: float, default_weig
     else:
         decision = "pass"
         reasons.append("sensor_checks_pass")
+
     return {
         "event_id": payload["event_id"],
         "order_id": payload["order_id"],

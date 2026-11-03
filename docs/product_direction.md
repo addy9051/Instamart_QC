@@ -263,15 +263,16 @@ where \(C_{\text{error}}\) = refund + redelivery + CX handling + churn proxy, \(
 
 | Capability | Status |
 |---|---|
-| Per-drop decision logic (`/v1/packing/audit`) | Implemented, using client-supplied inputs; to be re-sourced from OMS and sensors |
-| Order reconciliation (`/v1/packing/reconcile`) | Implemented (count-based); basis for scan-vs-bag (I1) |
+| Per-drop decision logic (`/v1/packing/audit`) | Implemented (legacy per-item path). Client tolerance can only tighten the server tolerance; low-confidence mismatches are reviews, not holds |
+| Order reconciliation (`/v1/packing/reconcile`) | Implemented (count-based, validated counts) |
+| Scan-vs-bag reconciliation (`/v1/packing/seal`, I1) | Implemented: scanned-not-bagged, bagged-twice, quantity, unexpected item. Order lines and scans come from the OMS adapter, not the client. Vision/tracker supplies `bagged_quantities` |
 | Expiry policy + date parser (`/v1/inward/expiry`) | Implemented; needs MFG/EXP disambiguation and per-SKU policy (I8) |
 | Produce triage classifier (`/v1/inward/freshness`) | Implemented as a public-data baseline (I7 triage only) |
 | SKU embedding bank + catalog match | Implemented (68 SKUs, public images); GRN enrollment planned (I6) |
-| Operating modes / kill switch | Planned (I3) |
-| Seal-weight completeness check | Planned (I4) |
-| Proof-of-pack bundle + hash chain + redaction | Planned (I2, I9) |
-| Picker scan-list ingestion | Planned (I1); needs OMS adapter |
+| Operating modes / kill switch (I3) | Implemented (`off/shadow/advisory/enforce`, per store/SKU, `allow_enforce` gate, `/v1/admin/kill-switch`). Per-order false-hold metrics with bootstrap CIs in `insta_audit.metrics` |
+| Seal-weight completeness check (I4) | Implemented (`insta_audit/seal.py`): gross-weight band, absolute+relative tolerance, uninformative light SKUs, variable-weight ranges. Gross weights in the catalog still need real weighings |
+| Proof-of-pack bundle + hash chain + redaction (I2, I9) | Implemented: hash-chained, optionally HMAC-signed bundles in local or S3-compatible storage, ROI crop/blur/downscale/metadata stripping, retention purge. Opt-in; needs PIA sign-off |
+| Picker scan-list ingestion | Implemented via signed OMS webhook + mock adapter (`docs/oms_webhook_contract.md`); real OMS field mapping pending |
 | Per-commodity produce specs + crate sampling | Planned (I7) |
 | Pick-time near-expiry check | Planned (I8) |
 | Unit-economics calculator | Planned (I5); formulas in section 7 |

@@ -23,6 +23,22 @@ data/
 - Annotate boxes/SKU/track IDs and per-item timestamps; use two reviewers for high-cost error labels. Keep a review class for ambiguity instead of forcing a SKU label.
 - Split by capture session/store/day before augmentation. Never put adjacent frames from one video in both train and test. Reserve a final untouched store/day test set.
 
+## Seal-weight catalog fields
+
+The seal-weight check (`/v1/packing/seal`) uses the SKU weights in `data/catalog/skus.yaml`. A net pack-size weight is **not** a scale reading, so it only gives a wide, low-confidence band that can never produce a hold. To enable confident checks, weigh at least 20 real sealed units per SKU on the station scale and record:
+
+```yaml
+- sku: '8901491501054'
+  gross_mean_g: 58.4       # mean of the weighings, packaging included
+  gross_std_g: 1.2         # sample standard deviation
+  gross_verified: true     # set only after the weighings above
+  weight_tolerance_pct: 3  # optional per-SKU relative tolerance
+# variable-weight items (loose produce) use a range instead:
+- sku: tomatoes_500g
+  min_weight_g: 450
+  max_weight_g: 550
+```
+
 ## Label formats
 
 - Detector training: Ultralytics YOLO directory format, a `data.yaml` file with explicit class names and `train` / `val` paths.

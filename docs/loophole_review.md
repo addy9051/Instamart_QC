@@ -3,6 +3,8 @@
 Scope: the project idea, the code (`src/`, `scripts/`, configs, Docker), how well it generalises to production, and whether Instamart or another quick-commerce operator would accept it.
 Severity: 🔴 blocker · 🟠 major · 🟡 minor.
 
+> **Status:** code for I1–I4 and I9 is implemented (see `docs/product_direction.md` §12): scan-vs-bag and seal-weight checks, operating modes with a kill switch, per-order metrics, hash-chained proof-of-pack with redaction and retention, and server-side order data (also addressing C1/C2/C7 on `/v1/packing/seal`). I5–I8 remain planned. Real-store validation is still required.
+
 ---
 
 ## 1. Project idea

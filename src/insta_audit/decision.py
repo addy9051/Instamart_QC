@@ -20,27 +20,36 @@ def audit_drop(payload: dict, bank: SkuBank, min_similarity: float, default_weig
     observed_weight = float(payload["measured_weight_delta_g"])
     expected_weight = float(payload["expected_unit_weight_g"]) * max(1, int(payload["observed_quantity"]))
     weight_error = abs(observed_weight - expected_weight) / expected_weight * 100.0
-    tolerance = float(payload.get("max_weight_error_pct") or default_weight_error_pct)
+    # A client may tighten the server tolerance but never loosen it.
+    tolerance = min(float(payload.get("max_weight_error_pct") or default_weight_error_pct), default_weight_error_pct)
 
+    soft_reasons: list[str] = []
     if quantity_delta < 0:
         reasons.append("quantity_short")
     elif quantity_delta > 0:
         reasons.append("quantity_over")
+    low_confidence = similarity is not None and similarity < min_similarity
     if observed_sku and observed_sku != expected_sku:
-        reasons.append("sku_mismatch")
-    if similarity is not None and similarity < min_similarity:
-        reasons.append("visual_match_below_threshold")
+        # A mismatch the model is unsure about is a review, not a hold billed to the packer.
+        (soft_reasons if low_confidence else reasons).append(
+            "low_confidence_sku_mismatch" if low_confidence else "sku_mismatch"
+        )
+    elif low_confidence:
+        soft_reasons.append("visual_match_below_threshold")
     if weight_error > tolerance:
         reasons.append("weight_out_of_tolerance")
 
     if reasons:
         decision = "hold"
+    elif soft_reasons:
+        decision = "review_required"
     elif similarity is None:
         decision = "review_required"
         reasons.append("visual_similarity_unavailable")
     else:
         decision = "pass"
         reasons.append("sensor_checks_pass")
+    reasons.extend(soft_reasons)
 
     return {
         "event_id": payload["event_id"],

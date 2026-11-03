@@ -39,6 +39,41 @@ class Settings(BaseSettings):
     max_concurrent_inference: int = 2
     inference_wait_seconds: float = 10.0
 
+    # Operating modes (I3). Everything starts in shadow; hard blocks need allow_enforce=true,
+    # which should only be set after the per-order false-hold gate is met on real store data.
+    modes_path: str = "configs/modes.yaml"
+    default_mode: str | None = None
+    kill_switch: bool = False
+    allow_enforce: bool = False
+
+    # Seal-weight check (I4). Calibrate scale_sigma_g from a known-weight test on the real scale.
+    scale_resolution_g: float = 1.0
+    scale_sigma_g: float = 2.0
+    scale_k: float = 3.0
+    seal_relative_tolerance_pct: float = 3.0
+    nominal_weight_bias_pct: float = 10.0
+
+    # Order data (I1). The mock source is for local pilots/tests; the webhook source needs a secret.
+    mock_orders_path: str | None = None
+    webhook_secret: str | None = None
+    webhook_result_url: str | None = None
+    webhook_order_ttl_seconds: int = 6 * 3600
+
+    # Proof-of-pack (I2) and privacy (I9). Capture is opt-in per deployment.
+    proof_enabled: bool = False
+    proof_store: str = "local"  # local | s3
+    proof_local_dir: str = "artifacts/proof"
+    proof_s3_bucket: str | None = None
+    proof_s3_prefix: str = ""
+    proof_s3_endpoint_url: str | None = None
+    proof_signing_key: str | None = None
+    proof_retention_days: int = 30
+    proof_max_images: int = 8
+    # Normalized "left,top,right,bottom" of the bag mouth in the camera frame.
+    proof_roi: str = "0,0,1,1"
+    # Semicolon-separated normalized boxes blurred before storage (e.g. a printed-label zone).
+    proof_blur_boxes: str = ""
+
     @property
     def root(self) -> Path:
         if self.project_root:

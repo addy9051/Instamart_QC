@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -41,8 +41,41 @@ class PackingAuditResponse(BaseModel):
 
 class ReconcileRequest(BaseModel):
     order_id: str = Field(min_length=1, max_length=100)
-    expected_quantities: dict[str, int]
-    observed_quantities: dict[str, int]
+    expected_quantities: dict[str, Annotated[int, Field(ge=0, le=100)]] = Field(max_length=200)
+    observed_quantities: dict[str, Annotated[int, Field(ge=0, le=100)]] = Field(max_length=200)
+
+
+class SealRequest(BaseModel):
+    """Everything the OMS already knows (lines, scans, expected weights) is looked up server-side
+    by order_id; the client only reports what it measured."""
+
+    order_id: str = Field(min_length=1, max_length=100)
+    bag_id: str = Field(default="bag-1", min_length=1, max_length=40)
+    measured_weight_g: float | None = Field(default=None, ge=0, le=100_000)
+    settled: bool = True
+    bagged_quantities: dict[str, Annotated[int, Field(ge=0, le=100)]] | None = Field(default=None, max_length=200)
+    keyframes_base64: list[str] = Field(default_factory=list, max_length=8)
+    seal_frame_base64: str | None = Field(default=None, max_length=7_000_000)
+
+
+class SealResponse(BaseModel):
+    order_id: str
+    bag_id: str
+    decision: Literal["pass", "hold", "review_required"]
+    confident: bool
+    mode: Literal["off", "shadow", "advisory", "enforce"]
+    action: Literal["none", "notify", "block"]
+    reason_codes: list[str]
+    weight: dict | None = None
+    scan: dict | None = None
+    proof: dict | None = None
+    versions: dict[str, str | None] | None = None
+    latency_ms: float | None = None
+
+
+class OrderWebhookResponse(BaseModel):
+    status: Literal["accepted"]
+    order_id: str
 
 
 class ExpiryRequest(BaseModel):

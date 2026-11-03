@@ -7,6 +7,7 @@
 3. `SkuBank` finds the closest owned multi-view anchor. The decision combines SKU identity, observed count, and expected-vs-measured grams. A missing model/reference match returns review; uncertain candidates must not silently pass.
 4. On batch receiving, a close-up date image is OCR'd (when enabled) and parsed into a calendar date. The category policy compares remaining days with a configured reference shelf-life. The reference duration is an approximation until batch manufacture date / vendor policy is available.
 5. Produce grading is a triage signal only. The model cannot see hidden spoilage, contamination, temperature abuse, or food-safety conditions.
+6. At sealing, the packer app posts one settled bag weight (and optional bagged counts) to `/v1/packing/seal`. The service looks up the order lines and picker scans from the OMS adapter, checks the weight against a gross-weight band, reconciles scans against bagged counts, applies the store's operating mode (`shadow` by default), and, when enabled, stores a redacted, hash-chained proof-of-pack bundle. See `docs/oms_webhook_contract.md` and `docs/privacy_impact_checklist.md`.
 
 ## Model and data controls
 

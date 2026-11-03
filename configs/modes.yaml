@@ -1,0 +1,10 @@
+version: 1
+# off | shadow | advisory | enforce. Start every store in shadow (log only, never shown to packers).
+default_mode: shadow
+kill_switch: false
+# Per-store overrides, e.g.:
+#   stores:
+#     STORE-BLR-001: advisory
+stores: {}
+# Per-SKU overrides can only make a store more lenient (e.g. force a noisy SKU to shadow).
+skus: {}

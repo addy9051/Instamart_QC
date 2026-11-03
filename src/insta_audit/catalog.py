@@ -28,6 +28,12 @@ def load_catalog(path: str | Path) -> dict[str, dict]:
         sku = str(row["sku"])
         verified = row.get("expected_unit_weight_g")
         weight = verified if verified else nominal_weight_g(row.get("catalog_quantity"))
+        gross_mean = _positive(row.get("gross_mean_g"))
+        gross_std = _positive(row.get("gross_std_g"), allow_zero=True)
+        min_weight = _positive(row.get("min_weight_g"))
+        max_weight = _positive(row.get("max_weight_g"))
+        if min_weight and max_weight and min_weight > max_weight:
+            raise ValueError(f"SKU {sku}: min_weight_g exceeds max_weight_g")
         catalog[sku] = {
             "sku": sku,
             "name": row.get("name") or sku,
@@ -35,7 +41,24 @@ def load_catalog(path: str | Path) -> dict[str, dict]:
             "category": row.get("category") or "packaged",
             "unit_weight_g": weight,
             "weight_source": "verified" if verified else ("nominal_from_pack_size" if weight else "unknown"),
+            # Seal-weight fields. gross_* come from weighing real units; unit_weight_g above may be
+            # a NET pack-size weight and is only used as a wide, advisory-only fallback.
+            "gross_mean_g": gross_mean,
+            "gross_std_g": gross_std,
+            "gross_verified": bool(row.get("gross_verified")) and gross_mean is not None,
+            "min_weight_g": min_weight,
+            "max_weight_g": max_weight,
+            "weight_tolerance_pct": _positive(row.get("weight_tolerance_pct")),
         }
     return catalog
+
+
+def _positive(value, allow_zero: bool = False) -> float | None:
+    if value is None:
+        return None
+    number = float(value)
+    if number < 0 or (number == 0 and not allow_zero):
+        raise ValueError(f"expected a positive number, got {value!r}")
+    return number
 
 

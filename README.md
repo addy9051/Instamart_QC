@@ -14,7 +14,7 @@ The suggested public datasets are not interchangeable or automatically productio
 
 ## Product direction (summary)
 
-The concept has been repositioned from "visual SKU verification of every item" to **proof-of-pack and order-completeness assurance for dark stores**. Full design, formulas, release gates, and pilot plan are in [`docs/product_direction.md`](docs/product_direction.md). Most items below are planned; section 12 of that document lists what is implemented today.
+The concept has been repositioned from "visual SKU verification of every item" to **proof-of-pack and order-completeness assurance for dark stores**. Full design, formulas, release gates, and pilot plan are in [`docs/product_direction.md`](docs/product_direction.md). I1–I4 and I9 (scan-vs-bag, proof-of-pack, operating modes, seal weight, privacy controls) are implemented as code; I5–I8 are still planned. Section 12 of that document lists the exact status.
 
 | # | Issue in the original idea | Revised approach |
 |---|---|---|
@@ -84,8 +84,18 @@ OCR remains unloaded unless `INSTA_AUDIT_ENABLE_OCR=true` and local PaddleOCR de
 ## API
 
 - `GET /health` — liveness and model readiness.
-- `POST /v1/packing/audit` — one drop event, expected SKU, visual embedding (or crop reference), and calibrated weight delta.
+- `POST /v1/packing/seal` — **order/bag-level audit at sealing** (I1, I3, I4): the order lines and picker scans are looked up server-side by `order_id`; the client reports only the settled seal weight, optional bagged counts, and optional frames. Returns the decision, the operating `mode`, the resulting `action` (`none | notify | block`), and the proof-of-pack head hash when capture is enabled.
+- `POST /v1/orders/webhook` — HMAC-signed OMS "order ready to pack" push. Contract: `docs/oms_webhook_contract.md`.
+- `GET /v1/proof/{order_id}/{bag_id}` — proof-of-pack manifest plus hash-chain verification (I2).
+- `POST /v1/admin/kill-switch`, `POST /v1/admin/proof/purge` — force every store to `off`; delete bundles past retention. Require an API key outside development.
+- `POST /v1/packing/audit` — one drop event (legacy per-item path); client tolerance can only tighten the server tolerance.
 - `POST /v1/inward/expiry` — optional close-up image or recognized text plus received date and category. Set `INSTA_AUDIT_ENABLE_OCR=true` to load the optional OCR adapter.
 - `POST /v1/inward/freshness` — produce image for condition triage.
+
+### Operating modes, proof-of-pack and privacy
+
+Every store starts in `shadow` (`configs/modes.yaml`): decisions are logged but never shown to packers. `advisory` notifies; `enforce` can block, but only for confident holds (count and verified-gross weight agree) and only when `INSTA_AUDIT_ALLOW_ENFORCE=true`. SKU overrides can only make a store more lenient. Evaluate on per-order rates with `python scripts/simulate_seal_eval.py` (synthetic design check) and `insta_audit.metrics.order_report` on real shadow data.
+
+Proof-of-pack is off by default (`INSTA_AUDIT_PROOF_ENABLED`). Frames are cropped to the bag-mouth ROI, label zones are blurred, images are downscaled and stripped of metadata, and bundles are deleted after `INSTA_AUDIT_PROOF_RETENTION_DAYS` (call `POST /v1/admin/proof/purge` from a scheduler). Bundles are stored in a local directory or any S3-compatible bucket (`pip install -e ".[s3]"`). Only use it for order-completeness disputes, never to score individual packers, and complete a privacy impact assessment first (`docs/privacy_impact_checklist.md`).
 
 See `docs/product_direction.md`, `docs/architecture.md`, and the OpenAPI page at `/docs` after starting the service. Integrate camera, scale, order service, and secure event transport through store-specific adapters; do not expose the demo server directly to a public network. The Docker image is API-only; install the matching `[vision]` / `[ocr]` extras and mount reviewed local model artifacts to enable those adapters. In production mode, set `INSTA_AUDIT_API_KEY`.

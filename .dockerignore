@@ -11,3 +11,5 @@ data/catalog/images
 data/catalog/*.jsonl
 tests
 .github
+artifacts/freshness_v3.ts
+artifacts/freshness_v3.ts.metadata.json

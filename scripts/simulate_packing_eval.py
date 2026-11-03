@@ -15,6 +15,8 @@ from PIL import Image, ImageEnhance, ImageFilter
 
 from insta_audit.catalog import load_catalog
 from insta_audit.decision import audit_drop
+from insta_audit.seal import ScaleSpec
+from insta_audit.vision.matching import MatchPolicy
 from insta_audit.vision.sku_bank import SkuBank
 
 
@@ -80,8 +82,7 @@ def main() -> None:
             total += 1
             retrieved += int(top is not None and top[0] == sku)
             base = {"event_id": f"{sku}-{i}", "order_id": f"O-{sku}", "expected_sku": sku,
-                    "expected_unit_weight_g": w, "expected_quantity": 1, "observed_quantity": 1,
-                    "visual_embedding": query}
+                    "expected_quantity": 1, "visual_embedding": query}
             # Correct pick: weight within +-6% of nominal.
             events.append(("pass", "correct", {**base, "measured_weight_delta_g": w * rng.uniform(0.94, 1.06)}))
             # Same-weight variant swap: wrong product photographed, scale reads the expected weight.
@@ -89,15 +90,17 @@ def main() -> None:
             swap = embed(corrupt(images[other], rng, args.strength))
             events.append(("hold", "variant_swap", {**base, "visual_embedding": swap,
                                                     "measured_weight_delta_g": w * rng.uniform(0.97, 1.03)}))
-            # Missing unit: order wants 2, one dropped in.
-            events.append(("hold", "missing_unit", {**base, "expected_quantity": 2, "observed_quantity": 1,
+            # Missing unit: order wants 2, one dropped in. The count is inferred from weight only.
+            events.append(("hold", "missing_unit", {**base, "expected_quantity": 2,
                                                     "measured_weight_delta_g": w * rng.uniform(0.95, 1.05)}))
             # Right product, wrong weight (leaking/partial pack).
             events.append(("hold", "weight_anomaly", {**base, "measured_weight_delta_g": w * rng.uniform(0.3, 0.6)}))
 
     stats: dict[str, dict] = {}
+    scale = ScaleSpec()
+    policy = MatchPolicy(min_similarity=args.threshold)
     for truth, scenario, payload in events:
-        decision = audit_drop(payload, bank, args.threshold, 18.0)["decision"]
+        decision = audit_drop(payload, bank, catalog, scale, policy)["decision"]
         row = stats.setdefault(scenario, {"truth": truth, "n": 0, "hold": 0, "pass": 0, "review_required": 0})
         row["n"] += 1
         row[decision] += 1

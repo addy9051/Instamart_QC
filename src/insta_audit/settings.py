@@ -24,7 +24,9 @@ class Settings(BaseSettings):
     ocr_rec_model_dir: str | None = None
     ocr_cls_model_dir: str | None = None
     min_visual_similarity: float = 0.5
-    max_weight_error_pct: float = 18.0
+    # Open-set matching: the top SKU must beat the runner-up by this much (lookalikes need more).
+    match_margin: float = 0.03
+    lookalike_margin: float = 0.06
     max_image_bytes: int = 5_000_000
     catalog_path: str = "data/catalog/skus.yaml"
     # Serve the browser demo files (index.html, app.js, css) even when environment=production.
@@ -36,9 +38,24 @@ class Settings(BaseSettings):
     public_demo_max_image_bytes: int = 1_500_000
     # Requests per minute per client on /v1/*. None -> 30 in public_demo mode, otherwise disabled (0).
     rate_limit_per_minute: int | None = None
+    # Freshness decision policy (C18/C19): costs set the review threshold; calibration is fitted at training.
+    freshness_cost_missed_rotten: float = 5.0
+    freshness_cost_false_reject: float = 1.0
+    freshness_accept_confidence: float = 0.80
+    freshness_reject_probability: float = 0.60
+    # Out-of-distribution gate: per-commodity DINOv2 prototypes (scripts/build_commodity_prototypes.py).
+    commodity_prototypes_path: str | None = None
+    ood_min_similarity: float = 0.35
     max_concurrent_inference: int = 2
     inference_wait_seconds: float = 10.0
-
+    # Extra requests allowed to wait for a worker, and the per-call limit before a 504.
+    inference_max_queue: int = 8
+    inference_timeout_seconds: float = 30.0
+    # Fail startup when the embedder and SKU bank were not built with the same model.
+    strict_model_check: bool = True
+    # Optional ONNX Runtime embedder (needs `pip install insta-audit[onnx]`); torch path if unset.
+    onnx_embedder_path: str | None = None
+    onnx_image_size: int = 224
     # Operating modes (I3). Everything starts in shadow; hard blocks need allow_enforce=true,
     # which should only be set after the per-order false-hold gate is met on real store data.
     modes_path: str = "configs/modes.yaml"

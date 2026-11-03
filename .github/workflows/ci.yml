@@ -9,5 +9,24 @@ jobs:
         with: { python-version: "3.11" }
       - run: pip install -e . pytest ruff
       - run: ruff check src tests --select E,F --ignore E501
+      - run: python scripts/sync_readme_stats.py --check
       - run: pytest -q
 
+  # C23: the image uses a NON-editable `pip install .`, so configs/ must be found outside site-packages.
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t insta-audit-ci .
+      - name: Start container and call /health
+        run: |
+          docker run -d --name ia -p 8080:8080 -e INSTA_AUDIT_API_KEY=ci-key insta-audit-ci
+          for i in $(seq 1 30); do
+            if curl -fsS -H "x-api-key: ci-key" http://localhost:8080/health -o health.json; then break; fi
+            sleep 1
+          done
+          cat health.json
+          python3 -c "import json; d=json.load(open('health.json')); assert d['status']=='ok', d; assert d['versions']['quality_policy'], d"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/health)" = "401"
+      - if: failure()
+        run: docker logs ia

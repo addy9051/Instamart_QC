@@ -8,6 +8,8 @@ from pathlib import Path
 
 from sklearn.model_selection import StratifiedGroupKFold
 
+from insta_audit.quality.freshness_eval import commodity_of, group_key
+
 
 STAGE_PATTERNS = (
     (re.compile(r"^fresh(?:\s|_|$)", re.I), "fresh"),
@@ -25,6 +27,13 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, default=Path("data/inward/agrifreshnet_split_manifest.csv"))
     parser.add_argument("--folds", type=int, default=5, help="5 folds gives approximately 60/20/20 train/val/test")
     parser.add_argument("--dry-run", action="store_true", help="print split counts only; copy nothing, write no manifest")
+    parser.add_argument("--group-regex", help="regex over the relative path; group 1 names the physical item / "
+                        "capture sequence / session that must stay inside one split")
+    parser.add_argument("--commodity-depth", type=int, default=1,
+                        help="path component (below the stage folder) that names the commodity")
+    parser.add_argument("--commodity-regex", help="regex over the relative path; group 1 is the commodity")
+    parser.add_argument("--holdout-commodity", help="leave-one-commodity-out: this commodity is the test set, "
+                        "never seen in train/val")
     args = parser.parse_args()
 
     records = []
@@ -37,9 +46,13 @@ def main() -> None:
         if stage is None:
             continue
         original_name = AUGMENTED.sub("", path.name)
-        group = hashlib.sha256(original_name.casefold().encode("utf-8")).hexdigest()
+        filename_group = hashlib.sha256(original_name.casefold().encode("utf-8")).hexdigest()
+        # Same fruit, background and lighting must not straddle splits: group by physical item /
+        # capture sequence when --group-regex identifies it, else by filename (augmented copies only).
+        group = group_key(rel.as_posix(), args.group_regex, filename_group)
+        commodity = commodity_of(rel.as_posix(), args.commodity_depth, args.commodity_regex)
         records.append({"path": path, "relative": rel.as_posix(), "stage": stage, "group": group,
-                        "original_name": original_name})
+                        "original_name": original_name, "commodity": commodity})
 
     if not records:
         raise SystemExit(f"No labeled images found under {args.source}")
@@ -61,14 +74,31 @@ def main() -> None:
     # Fold 0 -> test (never used for training or checkpoint selection), fold 1 -> val, rest -> train.
     conflict_set = set(conflicts)
     clean_idx = [i for i, r in enumerate(records) if r["group"] not in conflict_set]
-    splitter = StratifiedGroupKFold(n_splits=args.folds, shuffle=True, random_state=42)
-    y = [records[i]["stage"] for i in clean_idx]
-    groups = [records[i]["group"] for i in clean_idx]
-    folds = [idx for _, idx in splitter.split(clean_idx, y, groups)]
-    test = {clean_idx[k] for k in folds[0]}
-    val = {clean_idx[k] for k in folds[1]}
-    split_names = ["excluded" if records[i]["group"] in conflict_set else "test" if i in test
-                   else "val" if i in val else "train" for i in range(len(records))]
+    holdout = (args.holdout_commodity or "").lower()
+    if holdout:
+        # Leave-one-commodity-out: the held-out commodity is the whole test set. Groups never span
+        # commodities by construction of the path, but drop any that do from train/val.
+        test = {i for i in clean_idx if records[i]["commodity"] == holdout}
+        if not test:
+            known = sorted({r["commodity"] for r in records})
+            raise SystemExit(f"No images for --holdout-commodity {holdout!r}; commodities found: {known}")
+        held_groups = {records[i]["group"] for i in test}
+        pool = [i for i in clean_idx if i not in test and records[i]["group"] not in held_groups]
+        splitter = StratifiedGroupKFold(n_splits=args.folds, shuffle=True, random_state=42)
+        folds = [idx for _, idx in splitter.split(pool, [records[i]["stage"] for i in pool],
+                                                  [records[i]["group"] for i in pool])]
+        val = {pool[k] for k in folds[0]}
+        leaked = set(clean_idx) - test - set(pool)  # same group as a held-out image: excluded, not trained on
+    else:
+        leaked = set()
+        splitter = StratifiedGroupKFold(n_splits=args.folds, shuffle=True, random_state=42)
+        y = [records[i]["stage"] for i in clean_idx]
+        groups = [records[i]["group"] for i in clean_idx]
+        folds = [idx for _, idx in splitter.split(clean_idx, y, groups)]
+        test = {clean_idx[k] for k in folds[0]}
+        val = {clean_idx[k] for k in folds[1]}
+    split_names = ["excluded" if records[i]["group"] in conflict_set or i in leaked else
+                   "test" if i in test else "val" if i in val else "train" for i in range(len(records))]
 
     counts = Counter((split_names[i], record["stage"]) for i, record in enumerate(records))
     if args.dry_run:
@@ -85,7 +115,7 @@ def main() -> None:
         raise SystemExit(f"Output folders already exist: {args.output}. Move them aside before rebuilding the split.")
 
     with manifest_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["split", "stage", "source_relative_path", "original_filename", "group_id", "group_label_conflict"])
+        writer = csv.DictWriter(f, fieldnames=["split", "stage", "commodity", "source_relative_path", "original_filename", "group_id", "group_label_conflict"])
         writer.writeheader()
         for i, record in enumerate(records):
             split = split_names[i]
@@ -95,7 +125,8 @@ def main() -> None:
                 if target.exists():
                     raise SystemExit(f"Duplicate destination filename: {target}")
                 shutil.copy2(record["path"], target)
-            writer.writerow({"split": split, "stage": record["stage"], "source_relative_path": record["relative"],
+            writer.writerow({"split": split, "stage": record["stage"], "commodity": record["commodity"],
+                             "source_relative_path": record["relative"],
                              "original_filename": record["original_name"], "group_id": record["group"],
                              "group_label_conflict": str(len(group_labels[record["group"]]) > 1).lower()})
 

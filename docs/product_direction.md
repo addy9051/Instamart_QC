@@ -263,7 +263,7 @@ where \(C_{\text{error}}\) = refund + redelivery + CX handling + churn proxy, \(
 
 | Capability | Status |
 |---|---|
-| Per-drop decision logic (`/v1/packing/audit`) | Implemented (legacy per-item path). Client tolerance can only tighten the server tolerance; low-confidence mismatches are reviews, not holds |
+| Per-drop decision logic (`/v1/packing/audit`) | Implemented on server-side data: catalog weight/tolerance by `expected_sku`, unit count inferred from weight, top-k + margin + `unknown_item` matching, weight tie-break for lookalikes; client-controlled weight, tolerance, `observed_sku` and `observed_quantity` removed (422). Net-only weights can never hold |
 | Order reconciliation (`/v1/packing/reconcile`) | Implemented (count-based, validated counts) |
 | Scan-vs-bag reconciliation (`/v1/packing/seal`, I1) | Implemented: scanned-not-bagged, bagged-twice, quantity, unexpected item. Order lines and scans come from the OMS adapter, not the client. Vision/tracker supplies `bagged_quantities` |
 | Expiry policy + date parser (`/v1/inward/expiry`) | Implemented; needs MFG/EXP disambiguation and per-SKU policy (I8) |

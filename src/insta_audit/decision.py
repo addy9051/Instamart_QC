@@ -1,55 +1,80 @@
+"""Per-item drop audit. Identity and weight expectations come from the server-side catalog by
+`expected_sku`; the client supplies only what it measured (weight delta, embedding/crop)."""
+from insta_audit.seal import ScaleSpec, check_seal_weight
+from insta_audit.vision.matching import MatchPolicy, classify_match
 from insta_audit.vision.sku_bank import SkuBank
 
 
-def audit_drop(payload: dict, bank: SkuBank, min_similarity: float, default_weight_error_pct: float) -> dict:
+def audit_drop(
+    payload: dict,
+    bank: SkuBank,
+    catalog: dict[str, dict],
+    scale: ScaleSpec,
+    policy: MatchPolicy,
+) -> dict:
     expected_sku = payload["expected_sku"]
-    observed_sku = payload.get("observed_sku")
-    similarity = None
-    model_ready = bank.ready
-    reasons: list[str] = []
+    expected_qty = int(payload.get("expected_quantity", 1))
+    measured = float(payload["measured_weight_delta_g"])
+    hard: list[str] = []  # confident problems that can justify a hold
+    soft: list[str] = []  # uncertain signals: review, never a hold
 
-    if payload.get("visual_embedding") is not None:
+    weight = check_seal_weight(
+        {expected_sku: expected_qty}, catalog, measured, scale, bool(payload.get("settled", True))
+    )
+    inferred = weight["inferred_unit_count"]
+    confident_weight = weight["confidence"] == "high"
+    weight_error_pct = None
+    if weight["expected_g"]:
+        weight_error_pct = round(abs(weight["delta_g"]) / weight["expected_g"] * 100.0, 2)
+
+    if weight["status"] in ("short", "over"):
+        bucket = hard if confident_weight else soft
+        bucket.append("weight_out_of_tolerance" if confident_weight else "weight_out_of_tolerance_unverified")
+        # The count is inferred from weight, not reported by the client.
+        if inferred is not None and inferred != expected_qty:
+            bucket.append("quantity_short" if inferred < expected_qty else "quantity_over")
+    elif weight["status"] == "unsettled":
+        soft.append("scale_unsettled")
+    elif weight["status"] == "uninformative":
+        soft.append("catalog_weight_unavailable" if weight["unknown_skus"] else "weight_uninformative")
+
+    match = classify_match([], policy)
+    observed_sku = None
+    reasons_vision: list[str] = []
+    resolved_by_weight = False
+    embedding = payload.get("visual_embedding")
+    if embedding is not None:
         try:
-            result = bank.match(payload["visual_embedding"])
-            if result:
-                observed_sku, similarity = result
+            match = classify_match(bank.match_topk(embedding, k=3), policy, catalog, expected_sku)
         except ValueError:
-            reasons.append("embedding_dimension_mismatch")
+            soft.append("embedding_dimension_mismatch")
+    if match["status"] == "confident":
+        observed_sku = match["top_sku"]
+        if observed_sku != expected_sku:
+            hard.append("sku_mismatch")
+    elif match["status"] == "ambiguous":
+        candidates = match["candidates"]
+        fits = [
+            sku for sku in candidates
+            if check_seal_weight({sku: expected_qty}, catalog, measured, scale)["status"] == "ok"
+        ]
+        if fits == [expected_sku]:
+            observed_sku, resolved_by_weight = expected_sku, True
+            reasons_vision.append("visual_ambiguous_resolved_by_weight")
+        else:
+            soft.append("visual_ambiguous_lookalike")
+    elif match["status"] == "unknown":
+        soft.append("unknown_item")
 
-    quantity_delta = int(payload["observed_quantity"]) - int(payload["expected_quantity"])
-    observed_weight = float(payload["measured_weight_delta_g"])
-    expected_weight = float(payload["expected_unit_weight_g"]) * max(1, int(payload["observed_quantity"]))
-    weight_error = abs(observed_weight - expected_weight) / expected_weight * 100.0
-    # A client may tighten the server tolerance but never loosen it.
-    tolerance = min(float(payload.get("max_weight_error_pct") or default_weight_error_pct), default_weight_error_pct)
-
-    soft_reasons: list[str] = []
-    if quantity_delta < 0:
-        reasons.append("quantity_short")
-    elif quantity_delta > 0:
-        reasons.append("quantity_over")
-    low_confidence = similarity is not None and similarity < min_similarity
-    if observed_sku and observed_sku != expected_sku:
-        # A mismatch the model is unsure about is a review, not a hold billed to the packer.
-        (soft_reasons if low_confidence else reasons).append(
-            "low_confidence_sku_mismatch" if low_confidence else "sku_mismatch"
-        )
-    elif low_confidence:
-        soft_reasons.append("visual_match_below_threshold")
-    if weight_error > tolerance:
-        reasons.append("weight_out_of_tolerance")
-
-    if reasons:
-        decision = "hold"
-    elif soft_reasons:
-        decision = "review_required"
-    elif similarity is None:
-        decision = "review_required"
-        reasons.append("visual_similarity_unavailable")
+    if hard:
+        decision, reasons = "hold", hard + soft
+    elif soft:
+        decision, reasons = "review_required", soft
+    elif match["status"] == "unavailable":
+        decision, reasons = "review_required", ["visual_similarity_unavailable"]
     else:
-        decision = "pass"
-        reasons.append("sensor_checks_pass")
-    reasons.extend(soft_reasons)
+        decision, reasons = "pass", ["sensor_checks_pass"]
+    reasons = reasons + reasons_vision
 
     return {
         "event_id": payload["event_id"],
@@ -58,9 +83,14 @@ def audit_drop(payload: dict, bank: SkuBank, min_similarity: float, default_weig
         "reason_codes": reasons,
         "expected_sku": expected_sku,
         "observed_sku": observed_sku,
-        "visual_similarity": round(similarity, 4) if similarity is not None else None,
-        "weight_error_pct": round(weight_error, 2),
-        "model_ready": model_ready,
+        "visual_similarity": match["similarity"],
+        "visual_margin": match["margin"],
+        "match_status": match["status"],
+        "resolved_by_weight": resolved_by_weight,
+        "inferred_quantity": inferred,
+        "weight_status": weight["status"],
+        "weight_error_pct": weight_error_pct,
+        "model_ready": bank.ready,
     }
 
 

@@ -1,21 +1,23 @@
 from datetime import date, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PackingAuditRequest(BaseModel):
+    """What the edge client measured. Expected weight, tolerance and identity come from the
+    server-side catalog by `expected_sku`; old client-controlled fields are rejected (422)."""
+
+    model_config = ConfigDict(extra="forbid")
+
     event_id: str = Field(min_length=1, max_length=100)
     order_id: str = Field(min_length=1, max_length=100)
     expected_sku: str = Field(min_length=1, max_length=80)
     measured_weight_delta_g: float = Field(ge=0, le=100_000)
-    expected_unit_weight_g: float = Field(gt=0, le=100_000)
+    settled: bool = True
     visual_embedding: list[float] | None = Field(default=None, min_length=8, max_length=8192)
     crop_base64: str | None = Field(default=None, max_length=7_000_000)
-    observed_sku: str | None = Field(default=None, max_length=80)
     expected_quantity: int = Field(default=1, ge=1, le=100)
-    observed_quantity: int = Field(default=1, ge=0, le=100)
-    max_weight_error_pct: float | None = Field(default=None, ge=1, le=100)
 
     @field_validator("visual_embedding")
     @classmethod
@@ -33,7 +35,12 @@ class PackingAuditResponse(BaseModel):
     expected_sku: str
     observed_sku: str | None
     visual_similarity: float | None
-    weight_error_pct: float
+    visual_margin: float | None = None
+    match_status: Literal["confident", "ambiguous", "unknown", "unavailable"] = "unavailable"
+    resolved_by_weight: bool = False
+    inferred_quantity: int | None = None
+    weight_status: str | None = None
+    weight_error_pct: float | None
     model_ready: bool
     versions: dict[str, str | None] | None = None
     latency_ms: float | None = None
@@ -99,6 +106,10 @@ class ExpiryResponse(BaseModel):
     remaining_life_pct: float | None
     required_remaining_life_pct: float
     parsed_from_ocr: bool
+    expiry_source: Literal["manual", "ocr", "none"] = "none"
+    ocr_expiry_date: date | None = None
+    ocr_disagrees: bool = False
+    override_evidence: dict | None = None
     batch_id: str | None
     versions: dict[str, str | None] | None = None
     latency_ms: float | None = None
@@ -111,8 +122,11 @@ class FreshnessRequest(BaseModel):
 
 class FreshnessResponse(BaseModel):
     decision: Literal["accept", "hold", "reject", "review_required"]
+    action: Literal["accept", "discount", "reject", "review"] = "review"
     class_name: str | None
     confidence: float | None
+    probabilities: dict[str, float] | None = None
+    commodity_check: dict | None = None
     reason_codes: list[str]
     model_ready: bool
     versions: dict[str, str | None] | None = None
@@ -127,6 +141,10 @@ class CatalogMatchResponse(BaseModel):
     decision: Literal["match", "review_required"]
     top_sku: str | None
     similarity: float | None
+    runner_up_sku: str | None = None
+    runner_up_similarity: float | None = None
+    margin: float | None = None
+    match_status: Literal["confident", "ambiguous", "unknown", "unavailable"] = "unavailable"
     threshold: float
     reason_codes: list[str]
     model_ready: bool
@@ -135,9 +153,11 @@ class CatalogMatchResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    status: Literal["ok"]
+    status: Literal["ok", "degraded"]
     service: str
     environment: str
     models: dict[str, bool]
+    compatibility: dict | None = None
+    embedding_failures: int = 0
     timestamp: datetime
     versions: dict[str, str | None] | None = None

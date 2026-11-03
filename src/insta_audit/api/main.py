@@ -12,7 +12,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Re
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
-from insta_audit.api.guards import InferenceGate, RateLimiter
+from insta_audit.api.guards import InferenceRunner, RateLimiter
 from insta_audit.bag_audit import audit_bag
 from insta_audit.catalog import load_catalog
 from insta_audit.decision import audit_drop, reconcile_order
@@ -28,6 +28,7 @@ from insta_audit.privacy import PrivacyPolicy, parse_box, parse_boxes, redact_im
 from insta_audit.proof import build_bundle, load_manifest, purge_expired, validate_id, verify_bundle
 from insta_audit.quality.expiry import evaluate_expiry, parse_expiry_details
 from insta_audit.quality.freshness import FreshnessClassifier
+from insta_audit.quality.freshness_policy import CommodityPrototypes, FreshnessPolicy
 from insta_audit.quality.ocr import ExpiryOCR
 from insta_audit.schemas import (
     CatalogMatchRequest,
@@ -48,7 +49,10 @@ from insta_audit.seal import ScaleSpec
 from insta_audit.settings import get_settings
 from insta_audit.storage import LocalStore, ObjectStore, S3Store
 from insta_audit.versioning import build_versions, file_digest
+from insta_audit.vision.compat import check_compatibility
 from insta_audit.vision.embedder import DinoEmbedder
+from insta_audit.vision.matching import MatchPolicy, classify_match
+from insta_audit.vision.onnx_embedder import OnnxEmbedder
 from insta_audit.vision.sku_bank import SkuBank
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -71,8 +75,21 @@ resolved_policy_path = Path(settings.resolve(settings.policy_path))
 
 bank = SkuBank(resolved_sku_bank_path)
 catalog = load_catalog(resolved_catalog_path)
-freshness = FreshnessClassifier(resolved_freshness_path)
-embedder = DinoEmbedder(resolved_embedding_path)
+freshness = FreshnessClassifier(
+    resolved_freshness_path,
+    FreshnessPolicy(
+        cost_missed_rotten=settings.freshness_cost_missed_rotten,
+        cost_false_reject=settings.freshness_cost_false_reject,
+        accept_min_confidence=settings.freshness_accept_confidence,
+        reject_min_probability=settings.freshness_reject_probability,
+    ),
+)
+commodity_prototypes = CommodityPrototypes.load(settings.resolve(settings.commodity_prototypes_path))
+embedder = (
+    OnnxEmbedder(settings.resolve(settings.onnx_embedder_path), settings.onnx_image_size)
+    if settings.onnx_embedder_path
+    else DinoEmbedder(resolved_embedding_path)
+)
 ocr = (
     ExpiryOCR(
         settings.resolve(settings.ocr_det_model_dir),
@@ -90,16 +107,29 @@ if resolved_policy_path.is_file():
 else:
     logger.warning("Policy file not found at %s", resolved_policy_path)
 
-# Fail-fast check for model & bank compatibility
-if bank.ready and embedder.ready:
-    if embedder.dimension and bank.vector_dim and embedder.dimension != bank.vector_dim:
+compatibility = check_compatibility(
+    bank_ready=bank.ready,
+    bank_dim=bank.vector_dim,
+    bank_model=bank.metadata.get("embedding_model"),
+    embedder_ready=embedder.ready,
+    embedder_dim=embedder.dimension,
+    embedder_model=embedder.model_path,
+)
+if compatibility["status"] == "mismatch":
+    logger.error("Embedder/SKU bank mismatch: %s", "; ".join(compatibility["reasons"]))
+    if settings.strict_model_check:
         raise RuntimeError(
-            f"Embedding model dimension mismatch: embedder produces {embedder.dimension}-d vectors, "
-            f"but SKU bank requires {bank.vector_dim}-d vectors"
+            "Embedder/SKU bank mismatch (set INSTA_AUDIT_STRICT_MODEL_CHECK=false to start anyway): "
+            + "; ".join(compatibility["reasons"])
         )
 
 rate_limiter = RateLimiter(settings.effective_rate_limit)
-inference_gate = InferenceGate(settings.max_concurrent_inference, settings.inference_wait_seconds)
+inference_runner = InferenceRunner(
+    settings.max_concurrent_inference,
+    settings.inference_max_queue,
+    settings.inference_wait_seconds,
+    settings.inference_timeout_seconds,
+)
 
 resolved_modes_path = settings.resolve(settings.modes_path)
 mode_policy = ModePolicy.from_file(
@@ -114,6 +144,11 @@ scale_spec = ScaleSpec(
     k=settings.scale_k,
     relative_tolerance_pct=settings.seal_relative_tolerance_pct,
     nominal_bias_pct=settings.nominal_weight_bias_pct,
+)
+match_policy = MatchPolicy(
+    min_similarity=settings.min_visual_similarity,
+    margin=settings.match_margin,
+    lookalike_margin=settings.lookalike_margin,
 )
 mock_orders = MockOrderSource.from_file(settings.resolve(settings.mock_orders_path))
 webhook_orders = WebhookOrderSource(
@@ -206,7 +241,7 @@ def authenticate(request: Request, x_api_key: str | None = Header(default=None))
 @app.get("/health", response_model=HealthResponse, dependencies=[Depends(authenticate)])
 def health() -> HealthResponse:
     return HealthResponse(
-        status="ok",
+        status="degraded" if compatibility["status"] == "mismatch" else "ok",
         service="insta-audit",
         environment=settings.environment,
         models={
@@ -215,6 +250,8 @@ def health() -> HealthResponse:
             "freshness_classifier": freshness.ready,
             "expiry_ocr": bool(ocr and ocr.ready),
         },
+        compatibility=compatibility,
+        embedding_failures=getattr(embedder, "failures", 0),
         timestamp=datetime.now(UTC),
         versions=get_system_versions(),
     )
@@ -249,11 +286,10 @@ def catalog_match(payload: CatalogMatchRequest) -> dict:
             "versions": versions,
             "latency_ms": latency_ms,
         }
-    with inference_gate.slot():
-        vector = embedder.from_base64(payload.image_base64)
-    result = bank.match(vector) if vector is not None else None
+    vector = inference_runner.run(embedder.from_base64, payload.image_base64)
+    topk = bank.match_topk(vector, k=3) if vector is not None else []
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
-    if result is None:
+    if not topk:
         return {
             "decision": "review_required",
             "top_sku": None,
@@ -264,22 +300,30 @@ def catalog_match(payload: CatalogMatchRequest) -> dict:
             "versions": versions,
             "latency_ms": latency_ms,
         }
-    sku, score = result
-    matched = score >= settings.min_visual_similarity
+    match = classify_match(topk, match_policy, catalog)
+    matched = match["status"] == "confident"
+    reason = {"confident": "catalog_match", "ambiguous": "ambiguous_lookalike", "unknown": "unknown_item"}[
+        match["status"]
+    ]
     res = {
         "decision": "match" if matched else "review_required",
-        "top_sku": sku,
-        "similarity": round(score, 4),
-        "threshold": settings.min_visual_similarity,
-        "reason_codes": ["catalog_match" if matched else "below_similarity_threshold"],
+        "top_sku": match["top_sku"],
+        "similarity": match["similarity"],
+        "runner_up_sku": match["runner_up_sku"],
+        "runner_up_similarity": match["runner_up_similarity"],
+        "margin": match["margin"],
+        "match_status": match["status"],
+        "threshold": match["threshold"],
+        "reason_codes": [reason],
         "model_ready": True,
         "versions": versions,
         "latency_ms": latency_ms,
     }
     log_structured_audit(
         "catalog_match",
-        top_sku=sku,
+        top_sku=res["top_sku"],
         similarity=res["similarity"],
+        margin=res["margin"],
         decision=res["decision"],
         latency_ms=latency_ms,
     )
@@ -294,11 +338,10 @@ def packing_audit(payload: PackingAuditRequest) -> dict:
     if values["visual_embedding"] is None and values["crop_base64"]:
         if len(values["crop_base64"]) > max_bytes * 4 // 3 + 8:
             raise HTTPException(status_code=413, detail="image exceeds configured size limit")
-        with inference_gate.slot():
-            values["visual_embedding"] = embedder.from_base64(values["crop_base64"])
+        values["visual_embedding"] = inference_runner.run(embedder.from_base64, values["crop_base64"])
     values.pop("crop_base64", None)
 
-    result = audit_drop(values, bank, settings.min_visual_similarity, settings.max_weight_error_pct)
+    result = audit_drop(values, bank, catalog, scale_spec, match_policy)
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
     versions = get_system_versions()
     result["versions"] = versions
@@ -507,6 +550,31 @@ def proof_purge() -> dict:
     return {"removed": removed}
 
 
+def _store_expiry_override(payload: ExpiryRequest, ocr_text: str | None, ocr_expiry, disagrees: bool) -> dict:
+    """Keep the label image and OCR text next to a manually typed expiry so it can be audited."""
+    evidence = {
+        "batch_id": payload.batch_id,
+        "typed_expiry_date": str(payload.expiry_date),
+        "ocr_text": (ocr_text or "")[:2000],
+        "ocr_expiry_date": str(ocr_expiry) if ocr_expiry else None,
+        "disagrees": disagrees,
+        "image_stored": False,
+        "stored": False,
+    }
+    if proof_store is None or not payload.batch_id:
+        return evidence
+    try:
+        key = f"expiry_override/{validate_id(payload.batch_id)}/{int(time.time())}"
+        if payload.image_base64:
+            proof_store.put(f"{key}/label.jpg", _decode_proof_image(payload.image_base64), "image/jpeg")
+            evidence["image_stored"] = True
+        proof_store.put(f"{key}/evidence.json", json.dumps(evidence).encode("utf-8"), "application/json")
+        evidence["stored"] = True
+    except (ValueError, HTTPException):
+        logger.warning("expiry override evidence not stored for batch %r", payload.batch_id)
+    return evidence
+
+
 @app.post("/v1/inward/expiry", response_model=ExpiryResponse, dependencies=[Depends(authenticate)])
 def inward_expiry(payload: ExpiryRequest) -> dict:
     start_time = time.perf_counter()
@@ -519,16 +587,18 @@ def inward_expiry(payload: ExpiryRequest) -> dict:
     if not ocr_text and payload.image_base64 and ocr:
         if len(payload.image_base64) > max_bytes * 4 // 3 + 8:
             raise HTTPException(status_code=413, detail="image exceeds configured size limit")
-        with inference_gate.slot():
-            ocr_text = ocr.recognize_base64(payload.image_base64)
+        ocr_text = inference_runner.run(ocr.recognize_base64, payload.image_base64)
 
-    if (expiry is None or manufactured is None) and ocr_text:
-        details = parse_expiry_details(ocr_text, today=payload.received_date)
-        if expiry is None:
-            expiry = details.get("expiry")
-            parsed = expiry is not None
-        if manufactured is None:
-            manufactured = details.get("manufactured")
+    ocr_details: dict = {}
+    if ocr_text:
+        ocr_details = parse_expiry_details(ocr_text, today=payload.received_date)
+    ocr_expiry = ocr_details.get("expiry")
+    manual_expiry = expiry is not None
+    if expiry is None:
+        expiry = ocr_expiry
+        parsed = expiry is not None
+    if manufactured is None:
+        manufactured = ocr_details.get("manufactured")
 
     result = evaluate_expiry(
         payload.received_date,
@@ -538,6 +608,16 @@ def inward_expiry(payload: ExpiryRequest) -> dict:
         manufactured=manufactured,
         sku=payload.sku,
     )
+
+    # A typed date overrides OCR; keep the evidence and flag disagreement (C15).
+    disagrees = bool(manual_expiry and ocr_expiry and ocr_expiry != expiry)
+    override_evidence = None
+    if manual_expiry and (ocr_text or payload.image_base64):
+        if disagrees:
+            result["reason_codes"] = [*result["reason_codes"], "manual_expiry_disagrees_with_ocr"]
+            if result["decision"] == "accept":
+                result["decision"] = "review_required"
+        override_evidence = _store_expiry_override(payload, ocr_text, ocr_expiry, disagrees)
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
     versions = get_system_versions()
 
@@ -546,6 +626,10 @@ def inward_expiry(payload: ExpiryRequest) -> dict:
         "expiry_date": expiry,
         "manufactured_date": manufactured,
         "parsed_from_ocr": parsed,
+        "expiry_source": "manual" if manual_expiry else ("ocr" if parsed else "none"),
+        "ocr_expiry_date": ocr_expiry,
+        "ocr_disagrees": disagrees,
+        "override_evidence": override_evidence,
         "batch_id": payload.batch_id,
         "versions": versions,
         "latency_ms": latency_ms,
@@ -561,6 +645,9 @@ def inward_expiry(payload: ExpiryRequest) -> dict:
         expiry_date=str(expiry) if expiry else None,
         manufactured_date=str(manufactured) if manufactured else None,
         life_basis=res.get("life_basis"),
+        expiry_source=res["expiry_source"],
+        ocr_text=(ocr_text or "")[:200] if manual_expiry else None,
+        ocr_disagrees=disagrees,
         versions=versions,
         latency_ms=latency_ms,
     )
@@ -573,8 +660,18 @@ def inward_freshness(payload: FreshnessRequest) -> dict:
     max_bytes = settings.effective_max_image_bytes
     if len(payload.image_base64) > max_bytes * 4 // 3 + 8:
         raise HTTPException(status_code=413, detail="image exceeds configured size limit")
-    with inference_gate.slot():
-        result = freshness.predict_base64(payload.image_base64)
+    commodity_check = None
+    if commodity_prototypes is not None and embedder.ready:
+        vector = inference_runner.run(embedder.from_base64, payload.image_base64)
+        if vector is not None:
+            requested = (catalog.get(payload.sku) or {}).get("commodity") or payload.sku
+            commodity_check = commodity_prototypes.check(vector, requested, settings.ood_min_similarity)
+    if commodity_check and commodity_check["status"] != "ok":
+        result = {"decision": "review_required", "action": "review", "class_name": None, "confidence": None,
+                  "reason_codes": [commodity_check["reason"]], "model_ready": freshness.ready}
+    else:
+        result = inference_runner.run(freshness.predict_base64, payload.image_base64)
+    result["commodity_check"] = commodity_check
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
     versions = get_system_versions()
     result["versions"] = versions

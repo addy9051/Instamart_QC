@@ -2,9 +2,13 @@ import os
 
 os.environ.setdefault("INSTA_AUDIT_ENVIRONMENT", "development")
 
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from insta_audit.api import main  # noqa: E402
 from insta_audit.api.main import app  # noqa: E402
+from insta_audit.vision.sku_bank import SkuBank  # noqa: E402
 
 client = TestClient(app)
 
@@ -33,16 +37,17 @@ def test_reconcile_endpoint():
     assert r.status_code == 200 and r.json()["decision"] == "hold"
 
 
+def test_packing_audit_rejects_client_controlled_fields():
+    base = {"event_id": "e", "order_id": "o", "expected_sku": "X", "measured_weight_delta_g": 50}
+    for field, value in [("expected_unit_weight_g", 50), ("max_weight_error_pct", 100),
+                         ("observed_sku", "X"), ("observed_quantity", 1)]:
+        assert client.post("/v1/packing/audit", json={**base, field: value}).status_code == 422
+
+
 def test_packing_audit_without_model_is_review_not_pass():
     r = client.post(
         "/v1/packing/audit",
-        json={
-            "event_id": "e",
-            "order_id": "o",
-            "expected_sku": "X",
-            "measured_weight_delta_g": 50,
-            "expected_unit_weight_g": 50,
-        },
+        json={"event_id": "e", "order_id": "o", "expected_sku": "X", "measured_weight_delta_g": 50},
     )
     assert r.status_code == 200
     res = r.json()
@@ -52,32 +57,67 @@ def test_packing_audit_without_model_is_review_not_pass():
     assert res["latency_ms"] >= 0
 
 
+@pytest.fixture
+def audit_env(monkeypatch, tmp_path):
+    path = tmp_path / "bank.npz"
+    np.savez(path, skus=np.array(["A", "B"]),
+             embeddings=np.array([[1, 0, 0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0, 0, 0]], dtype=np.float32))
+    monkeypatch.setattr(main, "bank", SkuBank(path))
+    monkeypatch.setattr(main, "catalog", {
+        "A": {"brand": "a", "gross_mean_g": 52.0, "gross_std_g": 1.0, "gross_verified": True, "unit_weight_g": None},
+        "B": {"brand": "b", "gross_mean_g": 52.0, "gross_std_g": 1.0, "gross_verified": True, "unit_weight_g": None},
+    })
+
+
 def _audit(**kw):
-    body = {
-        "event_id": "e",
-        "order_id": "o",
-        "expected_sku": "8901491501054",
-        "expected_unit_weight_g": 52,
-        "measured_weight_delta_g": 52,
-        **kw,
-    }
+    body = {"event_id": "e", "order_id": "o", "expected_sku": "A", "measured_weight_delta_g": 52,
+            "visual_embedding": [1, 0, 0, 0, 0, 0, 0, 0], **kw}
     return client.post("/v1/packing/audit", json=body).json()
 
 
-def test_ui_wrong_variant_payload_is_hold():
-    r = _audit(observed_sku="8901491501061")
+def test_audit_correct_drop_passes(audit_env):
+    r = _audit()
+    assert r["decision"] == "pass" and r["match_status"] == "confident" and r["weight_status"] == "ok"
+
+
+def test_audit_wrong_variant_is_hold(audit_env):
+    r = _audit(visual_embedding=[0, 1, 0, 0, 0, 0, 0, 0])
     assert r["decision"] == "hold" and "sku_mismatch" in r["reason_codes"]
 
 
-def test_ui_extra_unit_payload_is_hold():
-    r = _audit(observed_quantity=2, measured_weight_delta_g=104)
-    assert r["decision"] == "hold" and "quantity_over" in r["reason_codes"]
-    assert r["weight_error_pct"] == 0
+def test_audit_extra_unit_is_inferred_from_weight(audit_env):
+    r = _audit(measured_weight_delta_g=104)
+    assert r["decision"] == "hold" and "quantity_over" in r["reason_codes"] and r["inferred_quantity"] == 2
 
 
-def test_ui_correct_without_photo_is_review_not_pass():
-    r = _audit(observed_sku="8901491501054")
+def test_audit_without_photo_is_review_not_pass(audit_env):
+    r = _audit(visual_embedding=None)
     assert r["decision"] == "review_required" and r["visual_similarity"] is None
+
+
+def test_catalog_match_reports_margin_and_unknown(audit_env, monkeypatch):
+    class FakeEmbedder:
+        ready = True
+        dimension = 8
+        model_path = None
+        failures = 0
+
+        def __init__(self, vector):
+            self.vector = vector
+
+        def from_base64(self, encoded):
+            return self.vector
+
+    body = {"image_base64": "A" * 40}
+    monkeypatch.setattr(main, "embedder", FakeEmbedder([1, 0, 0, 0, 0, 0, 0, 0]))
+    res = client.post("/v1/catalog/match", json=body).json()
+    assert res["decision"] == "match" and res["match_status"] == "confident" and res["top_sku"] == "A"
+    monkeypatch.setattr(main, "embedder", FakeEmbedder([0, 0, 1, 0, 0, 0, 0, 0]))
+    res = client.post("/v1/catalog/match", json=body).json()
+    assert res["decision"] == "review_required" and res["reason_codes"] == ["unknown_item"]
+    monkeypatch.setattr(main, "embedder", FakeEmbedder([1, 1, 0, 0, 0, 0, 0, 0]))
+    res = client.post("/v1/catalog/match", json=body).json()
+    assert res["match_status"] == "ambiguous"
 
 
 def test_inward_expiry_with_ocr_disambiguation():

@@ -39,13 +39,24 @@ class SkuBank:
         return self.metadata.get("embedding_dimension")
 
     def match(self, vector: list[float] | np.ndarray) -> tuple[str, float] | None:
+        top = self.match_topk(vector, k=1)
+        return top[0] if top else None
+
+    def match_topk(self, vector: list[float] | np.ndarray, k: int = 3) -> list[tuple[str, float]]:
+        """Best score per SKU (a SKU has several anchor views), highest first."""
         if not self.ready:
-            return None
+            return []
         query = self._normalize(np.asarray(vector, dtype=np.float32).reshape(1, -1))
         if query.shape[1] != self.vectors.shape[1]:
             raise ValueError(
                 f"Embedding dimension mismatch: query {query.shape[1]} vs bank {self.vectors.shape[1]}"
             )
         scores = self.vectors @ query[0]
-        index = int(scores.argmax())
-        return str(self.skus[index]), float(scores[index])
+        best: dict[str, float] = {}
+        for index in np.argsort(-scores):
+            sku = str(self.skus[index])
+            if sku not in best:
+                best[sku] = float(scores[index])
+                if len(best) >= k:
+                    break
+        return list(best.items())

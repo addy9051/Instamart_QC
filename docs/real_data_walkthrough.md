@@ -72,9 +72,9 @@ python scripts/build_embedding_bank.py --catalog data/catalog/skus.yaml --images
 
 ## What the packing page does now
 Every button press sends one real request to `/v1/packing/audit`. The decision, reason codes, weight error and similarity on screen are the API's response. Nothing on the page is invented.
-- Inputs are expected SKU, observed SKU (typed in by the scenario), quantity and weight (typed in, no scale).
-- With no photo the vision step does not run, so a correct item returns `review_required` (`visual_similarity_unavailable`), not `pass`. This is intended.
-- Attach an item photo and the DINOv2 match runs once for that audit. It then overrides the typed observed SKU.
+- Inputs are the expected SKU, expected quantity and a manually typed weight (no scale). The server looks up the catalog weight and tolerance by SKU, and infers the unit count from the weight; the page can no longer tell the API what SKU or quantity was observed.
+- With no photo the vision step does not run, so a correct item returns `review_required` (`visual_similarity_unavailable`), not `pass`. This is intended. The "wrong variant" scenario only produces a `sku_mismatch` hold if you attach a photo of a different product.
+- Attach an item photo and the DINOv2 match runs once for that audit: top-k with a margin over the runner-up, so a lookalike gives `visual_ambiguous_lookalike` (a review) and an unlisted item gives `unknown_item`.
 - The counters are session-only (items audited, holds, needs review) and start at 0. The round-trip time is browser → local API on CPU, not edge latency.
 
 ## Script (what to say and show)

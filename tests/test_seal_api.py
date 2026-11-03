@@ -190,10 +190,3 @@ def test_reconcile_validates_counts():
     huge = {f"S{i}": 1 for i in range(201)}
     assert client.post("/v1/packing/reconcile",
                        json={"order_id": "o", "expected_quantities": huge, "observed_quantities": {}}).status_code == 422
-
-
-def test_audit_client_tolerance_can_tighten_but_not_loosen():
-    base = {"event_id": "e", "order_id": "o", "expected_sku": "X",
-            "measured_weight_delta_g": 70, "expected_unit_weight_g": 50}
-    loose = client.post("/v1/packing/audit", json={**base, "max_weight_error_pct": 100}).json()
-    assert "weight_out_of_tolerance" in loose["reason_codes"]

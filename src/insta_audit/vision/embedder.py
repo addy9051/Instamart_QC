@@ -12,6 +12,7 @@ class DinoEmbedder:
         self.processor = self.model = self.torch = None
         self.model_path = model_path
         self.dimension: int | None = None
+        self.failures = 0
         if not model_path:
             return
         try:
@@ -47,6 +48,7 @@ class DinoEmbedder:
                 vector = self.model(**inputs).last_hidden_state[:, 0]
                 vector = self.torch.nn.functional.normalize(vector, dim=1)[0]
             return vector.cpu().tolist()
-        except Exception as exc:
-            logger.error("Failed to generate embedding from base64 image: %s", exc)
+        except Exception:
+            self.failures += 1
+            logger.exception("Failed to generate embedding from base64 image")
             return None

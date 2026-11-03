@@ -3,6 +3,14 @@ import copy
 import json
 from pathlib import Path
 
+from insta_audit.quality.freshness_eval import (
+    checkpoint_score,
+    expected_calibration_error,
+    fbeta,
+    fit_temperature,
+    softmax,
+)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train a produce freshness classification model on GPU/CPU with early stopping")
@@ -15,6 +23,9 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate for AdamW")
     parser.add_argument("--patience", type=int, default=3, help="Early stopping patience (epochs without validation improvement). <=0 disables.")
     parser.add_argument("--min-delta", type=float, default=0.001, help="Minimum improvement required to reset early stopping patience")
+    parser.add_argument("--select-metric", default="f2", choices=["f2", "recall_at_precision", "recall"],
+                        help="Checkpoint selection on the validation split. Recall alone rewards an 'always rotten' model.")
+    parser.add_argument("--min-precision", type=float, default=0.9, help="Precision floor for --select-metric recall_at_precision")
     args = parser.parse_args()
 
     try:
@@ -75,16 +86,18 @@ def main() -> None:
     loss_fn = nn.CrossEntropyLoss()
     scaler = torch.amp.GradScaler("cuda", enabled=device == "cuda")
 
+    best_score = float("-inf")
     best_recall = -1.0
     best_f1 = -1.0
     best_epoch = 0
     best_metrics = {}
+    best_val_logits = best_val_labels = None
     epochs_no_improve = 0
     early_stopped = False
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     print(f"[Training] {len(classes)} classes: {classes} | Train samples: {len(train_data)} | Val samples: {len(val_data)}")
-    print(f"[Early Stopping] Patience: {args.patience} epochs | Min delta: {args.min_delta} on spoiled_recall\n")
+    print(f"[Early Stopping] Patience: {args.patience} epochs | Min delta: {args.min_delta} on {args.select_metric}\n")
 
     for epoch in range(args.epochs):
         model.train()
@@ -104,10 +117,13 @@ def main() -> None:
         # Validation evaluation
         model.eval()
         tp = fp = fn = correct = count = 0
+        epoch_logits, epoch_labels = [], []
         with torch.inference_mode():
             for images, labels in val_loader:
                 images = images.to(device, non_blocking=pin_memory)
                 logits = model(images)
+                epoch_logits.append(logits.float().cpu())
+                epoch_labels.append(labels)
                 pred = logits.argmax(1).cpu()
                 correct += int((pred == labels).sum())
                 count += len(labels)
@@ -121,26 +137,27 @@ def main() -> None:
         avg_loss = running_loss / max(1, len(train_data))
         val_acc = correct / max(1, count)
 
-        # Improvement check: primary is spoiled_recall; tie-breaker is spoiled_f1
-        improved = False
-        if recall > best_recall + args.min_delta:
-            improved = True
-        elif abs(recall - best_recall) <= args.min_delta and f1 > best_f1 + args.min_delta:
-            improved = True
+        # Improvement check: F2 of the spoiled class (or recall at a precision floor), not recall alone.
+        score = checkpoint_score(args.select_metric, precision, recall, args.min_precision)
+        improved = score > best_score + args.min_delta
 
         status_marker = "(* best checkpoint saved)" if improved else ""
-        print(f"epoch={epoch+1:02d}/{args.epochs:02d} loss={avg_loss:.4f} val_acc={val_acc:.4f} spoiled_precision={precision:.4f} spoiled_recall={recall:.4f} spoiled_f1={f1:.4f} {status_marker}")
+        print(f"epoch={epoch+1:02d}/{args.epochs:02d} loss={avg_loss:.4f} val_acc={val_acc:.4f} spoiled_precision={precision:.4f} spoiled_recall={recall:.4f} spoiled_f1={f1:.4f} {args.select_metric}={score:.4f} {status_marker}")
 
         if improved:
+            best_score = score
             best_recall = recall
             best_f1 = f1
             best_epoch = epoch + 1
             epochs_no_improve = 0
+            best_val_logits = torch.cat(epoch_logits).numpy()
+            best_val_labels = torch.cat(epoch_labels).numpy()
             best_metrics = {
                 "val_accuracy": val_acc,
                 "spoiled_precision": precision,
                 "spoiled_recall": recall,
                 "spoiled_f1": f1,
+                "spoiled_f2": fbeta(precision, recall, 2.0),
                 "best_epoch": best_epoch,
             }
             # Script a CPU clone so deployment TorchScript is device-agnostic
@@ -187,13 +204,24 @@ def main() -> None:
         }
         print("TEST (untouched split): " + json.dumps({k: v for k, v in test_metrics.items() if k != "confusion_rows_truth_cols_pred"}))
 
+    # Temperature scaling fitted on the validation logits of the selected checkpoint.
+    temperature, ece_before, ece_after = 1.0, None, None
+    if best_val_logits is not None:
+        temperature = fit_temperature(best_val_logits, best_val_labels)
+        ece_before = expected_calibration_error(softmax(best_val_logits), best_val_labels)
+        ece_after = expected_calibration_error(softmax(best_val_logits, temperature), best_val_labels)
+        print(f"[Calibration] temperature={temperature} ECE {ece_before:.4f} -> {ece_after:.4f}")
+
     metadata = {
         "architecture": "torchvision.resnet18",
         "classes": classes,
         "input_size": [224, 224],
         "normalization_mean": list(mean),
         "normalization_std": list(std),
-        "selection_metric": "rotten_or_spoiled_recall",
+        "selection_metric": args.select_metric,
+        "min_precision": args.min_precision if args.select_metric == "recall_at_precision" else None,
+        "temperature": temperature,
+        "calibration": {"ece_before": ece_before, "ece_after": ece_after, "fitted_on": "validation"},
         "best_validation_metrics": best_metrics,
         "test_metrics": test_metrics,
         "validation_data": str(args.data / "val"),

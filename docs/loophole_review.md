@@ -4,6 +4,27 @@ Scope: the project idea, the code (`src/`, `scripts/`, configs, Docker), how wel
 Severity: 🔴 blocker · 🟠 major · 🟡 minor.
 
 > **Status:** code for I1–I4 and I9 is implemented (see `docs/product_direction.md` §12): scan-vs-bag and seal-weight checks, operating modes with a kill switch, per-order metrics, hash-chained proof-of-pack with redaction and retention, and server-side order data (also addressing C1/C2/C7 on `/v1/packing/seal`). I5–I8 remain planned. Real-store validation is still required.
+>
+> **Code-level status (C1–C26):** all are addressed in code; what each needs before it can be trusted is below. "Code only" means no real data or hardware has validated it.
+
+| # | Status | Where / caveat |
+|---|---|---|
+| C1, C2, C7 | Fixed | `/v1/packing/audit` takes only measured inputs; weight, tolerance and identity come from the catalog by `expected_sku`; unit count inferred from weight and compared with `expected_quantity`. Old fields return 422 (breaking change) |
+| C3 | Fixed | Demo UI no longer disables auth; rate limit, image cap, bounded inference (tests in `test_hardening.py`) |
+| C4 | Fixed | `versions` (bank, embedder, policy, catalog, modes) and `latency_ms` on every response and structured log |
+| C5, C6 | Fixed in code | Absolute + relative tolerance (`seal.py`), gross vs net separated; `scripts/import_weighings.py` sets `gross_verified` only after real weighings (≥20 units). **No SKU has real gross weights yet** |
+| C8, C9 | Fixed | `match_topk`, margin, per-SKU/lookalike thresholds, `unknown_item`, weight tie-break; confident mismatch → hold, uncertain → review. Thresholds are defaults until tuned on real captures |
+| C10 | Fixed | Startup fails fast on dimension/model mismatch, `/health` reports it, embedding failures are logged and counted |
+| C11 | Fixed | Bounded, non-negative counts on reconcile and seal |
+| C12–C14 | Fixed | Expiry parsing and category policy (earlier commit) |
+| C15 | Fixed | OCR text/image kept with manual expiry overrides; disagreement flagged and never auto-accepted |
+| C16 | Fixed | Browser demo calls `/v1/inward/expiry`; client-side policy removed |
+| C17, C18, C19, C20 | Code only | Item-grouped split and leave-one-commodity-out (`prepare_agrifreshnet.py`), per-commodity report, F2 / recall-at-precision selection, temperature scaling, cost-based decision policy with `discount` action, OOD/commodity gate. **No retraining was done**; the shipped checkpoint predates these changes |
+| C21, C22 | Code only | Signed multi-point load cell, tare, settle window, drift check; polygon ROI, hand suppression, scale-fused events. Needs real scale and video |
+| C23 | Verified | Non-editable install resolves `configs/` from the working directory; CI builds and starts the image (the local Docker daemon was unavailable, so the install path was checked in a throwaway venv) |
+| C24 | Code only | Bounded queue, timeouts, optional ONNX embedder; **parity and latency must be validated on the edge device** (`scripts/check_onnx_parity.py`) |
+| C25 | Fixed | README numbers synced from bank metadata (CI check); demo image copies only served artifacts. `docs/eval_results.json` predates the new audit logic and is not regenerated |
+| C26 | Fixed | Tests for auth with `demo_ui`, light-SKU tolerance, MFG+EXP, category coverage, root resolution; CI runs README check and a Docker start-up smoke test |
 
 ---
 

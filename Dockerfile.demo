@@ -15,7 +15,9 @@ RUN pip install --no-cache-dir torch torchvision --index-url https://download.py
  && pip install --no-cache-dir ".[vision]" \
  && python -c "from huggingface_hub import snapshot_download as s; s('facebook/dinov2-small', local_dir='/opt/hf/dinov2-small')"
 COPY configs ./configs
-COPY artifacts ./artifacts
+# Only the artifacts the service actually loads (not older checkpoints such as freshness_v3.ts).
+COPY artifacts/sku_bank.npz artifacts/sku_bank.npz.metadata.json ./artifacts/
+COPY artifacts/freshness.ts artifacts/freshness.ts.metadata.json ./artifacts/
 COPY data/catalog/skus.yaml ./data/catalog/skus.yaml
 COPY index.html app.js styles.css live.css ./
 RUN useradd --create-home --uid 10001 appuser

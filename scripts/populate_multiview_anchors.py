@@ -279,8 +279,10 @@ def main() -> None:
                 "brand": item["brand"],
                 "category": item["category"],
                 "catalog_quantity": f"{item['weight_g']}g",
+                # Pack-size (NET) weight only; gross weights come from real weighings
+                # (scripts/import_weighings.py), which is what sets weight_verified.
                 "expected_unit_weight_g": item["weight_g"],
-                "weight_verified": True,
+                "weight_verified": False,
                 "anchor_images": all_imgs,
             }
         )

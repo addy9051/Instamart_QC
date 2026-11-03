@@ -34,13 +34,11 @@ function fileToBase64(file) {
   });
 }
 async function runApiAudit(expected, scenario, observedWeight) {
-  const isWrong = scenario === 'wrong', isExtra = scenario === 'extra';
+  const isExtra = scenario === 'extra';
   const photo = $('#packing-photo')?.files[0];
   const payload = {
-    event_id: `ui-${state.drops}`, order_id: 'IM-804921', expected_sku: expected.sku,
-    expected_unit_weight_g: expected.weight, expected_quantity: 1, observed_quantity: isExtra ? 2 : 1,
+    event_id: `ui-${state.drops}`, order_id: 'IM-804921', expected_sku: expected.sku, expected_quantity: 1,
     measured_weight_delta_g: isExtra ? expected.weight * 2 : observedWeight,
-    observed_sku: isWrong ? '8901491501061' : expected.sku,
   };
   if (photo) payload.crop_base64 = await fileToBase64(photo);
   const started = performance.now();
@@ -62,8 +60,10 @@ async function runApiAudit(expected, scenario, observedWeight) {
   $('#event-title').textContent = `Audit decision: ${res.decision}`;
   $('#event-time').textContent = new Intl.DateTimeFormat('en-IN', {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false}).format(new Date());
   $('#event-content').innerHTML = `<div class="event-detail"><div class="event-badge ${flagged ? 'flag' : 'pass'}">${flagged ? '!' : (res.decision === 'pass' ? 'OK' : '?')}</div><div class="event-copy"><b>${expected.name}</b><small>reasons: ${res.reason_codes.join(', ')} | inputs: scenario "${scenario}", manual weight ${payload.measured_weight_delta_g} g, ${photo ? 'photo supplied' : 'no photo, vision not run'}</small></div><span class="event-flag ${flagged ? 'flag' : ''}">${res.decision.toUpperCase()}</span></div>`;
-  updateSignals(similarity == null ? 0 : similarity * 100, Math.max(0, 100 - res.weight_error_pct),
-    similarity == null ? 'not run (no photo)' : `${(similarity * 100).toFixed(1)}%`, `${res.weight_error_pct}% off nominal`, flagged);
+  const weightError = res.weight_error_pct ?? 0;
+  updateSignals(similarity == null ? 0 : similarity * 100, Math.max(0, 100 - weightError),
+    similarity == null ? 'not run (no photo)' : `${(similarity * 100).toFixed(1)}%`,
+    res.weight_error_pct == null ? 'no verified catalog weight' : `${res.weight_error_pct}% off catalog weight`, flagged);
   toast(`${res.decision}: ${res.reason_codes.join(', ')}`);
 }
 function audit(kind) {
@@ -132,19 +132,33 @@ $$('.nav-item').forEach(btn=>btn.addEventListener('click',()=>{
   const titles={packing:'PACKING STATION',inward:'INWARD QUALITY',economics:'LOSS & ROI'};$('#crumb-title').textContent=titles[page];window.scrollTo({top:0,behavior:'smooth'});
 }));
 
+const INWARD_CATEGORY={'Idli batter · 1 kg':'dairy','Fresh tomatoes · 500 g':'produce','Paneer · 200 g':'dairy','Milk · 500 ml':'dairy'};
 function updateRemaining() {
   const received=new Date(`${$('#received-date').value}T00:00:00`), expiry=new Date(`${$('#expiry-date').value}T00:00:00`);
   let days=Math.ceil((expiry-received)/86400000);if(!Number.isFinite(days))days=0;days=Math.max(-999,days);
-  const totalDays=$('#inward-sku').value.includes('Milk')?7:$('#inward-sku').value.includes('Paneer')?14:$('#inward-sku').value.includes('tomatoes')?7:7;
-  const pct=Math.round(days/totalDays*100);$('#remaining-days').innerHTML=`${days} day${Math.abs(days)===1?'':'s'} <span>(${pct}%)</span>`;$('#life-bar').style.width=`${Math.max(0,Math.min(100,pct))}%`;
-  const packaged=$('#inward-sku').value.includes('tomatoes');const threshold=packaged?50:70;$('#policy-threshold').textContent=`${threshold}%`;
-  $('#life-bar').style.background=pct>=threshold?'#55b778':'#dda33c';return {days,pct,threshold};
+  // Shelf-life percentage and the policy threshold come from /v1/inward/expiry, not from this page.
+  $('#remaining-days').innerHTML=`${days} day${Math.abs(days)===1?'':'s'} <span>(run check for policy %)</span>`;
+  return {days};
 }
 $('#received-date').addEventListener('change',updateRemaining);$('#expiry-date').addEventListener('change',updateRemaining);$('#inward-sku').addEventListener('change',updateRemaining);
-$('#run-inward').addEventListener('click',()=>{
-  const {days,pct,threshold}=updateRemaining(); const freshness=$('.produce-card.active')?.dataset.freshness||'Good';
-  let pass=pct>=threshold && days>=0 && freshness==='Good'; let title=pass?'Accept batch':pct<0?'Expired batch':pct<threshold?'Shelf-life below policy':`${freshness} sample · review required`;
-  let cls=pass?'pass':freshness==='Review'?'':'fail'; let detail=pass?'Expiry and condition are within the configured receiving checks.':freshness==='Review'?'Condition is uncertain. Route this sample to a receiving associate.':freshness==='Reject'?'Sample marked spoiled. Keep the batch out of pickable inventory.':`Received with ${pct}% remaining shelf life; policy requires ${threshold}%.`;
+$('#run-inward').addEventListener('click',async()=>{
+  const {days}=updateRemaining(); const freshness=$('.produce-card.active')?.dataset.freshness||'Good';
+  const button=$('#run-inward'); button.disabled=true;
+  let res;
+  try {
+    const response=await fetch('/v1/inward/expiry',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      category:INWARD_CATEGORY[$('#inward-sku').value]||'packaged',received_date:$('#received-date').value,expiry_date:$('#expiry-date').value,batch_id:$('#batch-id').value||null})});
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    res=await response.json();
+  } catch(error) { toast(`Expiry API unreachable: ${error.message}`); return; }
+  finally { button.disabled=false; }
+  const pct=res.remaining_life_pct==null?0:Math.round(res.remaining_life_pct), threshold=Math.round(res.required_remaining_life_pct);
+  $('#remaining-days').innerHTML=`${days} day${Math.abs(days)===1?'':'s'} <span>(${pct}%)</span>`;$('#life-bar').style.width=`${Math.max(0,Math.min(100,pct))}%`;
+  $('#policy-threshold').textContent=`${threshold}%`;$('#life-bar').style.background=res.decision==='accept'?'#55b778':'#dda33c';
+  const pass=res.decision==='accept' && freshness==='Good';
+  const title=pass?'Accept batch':res.decision==='reject'?'Expired batch':res.decision!=='accept'?'Shelf-life check: '+res.decision.replace('_',' '):`${freshness} sample · review required`;
+  const cls=pass?'pass':freshness==='Review'?'':'fail';
+  const detail=pass?'Expiry and condition are within the configured receiving checks.':res.decision!=='accept'?`Policy result: ${res.reason_codes.join(', ')}.`:freshness==='Review'?'Condition is uncertain. Route this sample to a receiving associate.':'Sample marked spoiled. Keep the batch out of pickable inventory.';
   $('#inward-result').innerHTML=`<div class="decision-result"><span class="decision-badge ${pass?'pass':''}">${pass?'ACCEPT':'HOLD FOR REVIEW'}</span><div class="decision-header"><div class="decision-icon ${cls}">${pass?'✓':'!'}</div><div><h2>${title}</h2><p>${detail}</p></div></div><div class="decision-details"><div><small>DATE ENTERED (MANUAL)</small><b>${new Date(`${$('#expiry-date').value}T00:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</b></div><div><small>REMAINING LIFE</small><b>${pct}% · ${days} days</b></div><div><small>BATCH</small><b>${$('#batch-id').value||'—'}</b></div><div><small>FRESHNESS SAMPLE</small><b>${freshness}</b></div></div></div>`;
   toast(pass?'Receiving check passed':'Receiving check held for review');
 });

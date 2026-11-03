@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import yaml
 
-from insta_audit.catalog import load_catalog, nominal_weight_g
+from insta_audit.catalog import nominal_weight_g
 from insta_audit.decision import audit_drop, reconcile_order
 from insta_audit.quality.expiry import (
     evaluate_expiry,
@@ -13,52 +13,140 @@ from insta_audit.quality.expiry import (
     parse_expiry,
     parse_expiry_details,
 )
+from insta_audit.seal import ScaleSpec
 from insta_audit.versioning import build_versions, file_digest
+from insta_audit.vision.matching import MatchPolicy, classify_match
 from insta_audit.vision.sku_bank import SkuBank
+
+SCALE = ScaleSpec(resolution_g=1.0, sigma_g=1.0)
+POLICY = MatchPolicy(min_similarity=0.78, margin=0.03, lookalike_margin=0.06)
+
+
+def _entry(mean, brand, verified=True):
+    return {"brand": brand, "gross_mean_g": mean, "gross_std_g": 1.0, "gross_verified": verified,
+            "unit_weight_g": None}
+
+
+CATALOG = {
+    "A": _entry(52, "Acme"),
+    "B": _entry(52, "Other"),
+    "A2": _entry(90, "Acme"),  # same-brand lookalike of A, but a clearly different weight
+    "A3": _entry(52, "Acme"),  # same-brand lookalike with the SAME weight
+    "NET": {"brand": "Net", "unit_weight_g": 50, "gross_verified": False},
+}
 
 
 @pytest.fixture
 def bank(tmp_path):
     path = tmp_path / "bank.npz"
+    np.savez(path, skus=np.array(["A", "B", "A2"]),
+             embeddings=np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0.95, 0.31, 0, 0]], dtype=np.float32))
+    return SkuBank(path)
+
+
+@pytest.fixture
+def plain_bank(tmp_path):
+    path = tmp_path / "plain.npz"
     np.savez(path, skus=np.array(["A", "B"]), embeddings=np.array([[1, 0, 0, 0], [0, 1, 0, 0]], dtype=np.float32))
     return SkuBank(path)
 
 
+@pytest.fixture
+def twin_bank(tmp_path):
+    """A and A3 look alike AND weigh the same, so weight cannot break the tie."""
+    path = tmp_path / "twin.npz"
+    np.savez(path, skus=np.array(["A", "A3"]), embeddings=np.array([[1, 0, 0, 0], [0.96, 0.28, 0, 0]], dtype=np.float32))
+    return SkuBank(path)
+
+
 def payload(**kw):
-    base = {"event_id": "e", "order_id": "o", "expected_sku": "A", "expected_unit_weight_g": 52,
-            "expected_quantity": 1, "observed_quantity": 1, "measured_weight_delta_g": 52,
-            "visual_embedding": [1, 0, 0, 0]}
+    base = {"event_id": "e", "order_id": "o", "expected_sku": "A", "expected_quantity": 1,
+            "measured_weight_delta_g": 52, "visual_embedding": [1, 0, 0, 0]}
     return {**base, **kw}
 
 
-def test_pass(bank):
-    assert audit_drop(payload(), bank, 0.78, 18)["decision"] == "pass"
+def run(bank, **kw):
+    return audit_drop(payload(**kw), bank, CATALOG, SCALE, POLICY)
+
+
+def test_pass(plain_bank):
+    r = run(plain_bank)
+    assert r["decision"] == "pass" and r["match_status"] == "confident"
 
 
 def test_same_weight_variant_swap_caught_by_vision(bank):
-    r = audit_drop(payload(visual_embedding=[0, 1, 0, 0]), bank, 0.78, 18)
+    r = run(bank, visual_embedding=[0, 1, 0, 0])
     assert r["decision"] == "hold" and "sku_mismatch" in r["reason_codes"]
 
 
-def test_missing_unit_caught(bank):
-    r = audit_drop(payload(expected_quantity=2), bank, 0.78, 18)
-    assert "quantity_short" in r["reason_codes"]
+def test_missing_unit_inferred_from_weight_not_client(bank):
+    r = run(bank, expected_quantity=2)
+    assert r["decision"] == "hold" and "quantity_short" in r["reason_codes"] and r["inferred_quantity"] == 1
+
+
+def test_extra_unit_inferred_from_weight(bank):
+    r = run(bank, measured_weight_delta_g=104)
+    assert "quantity_over" in r["reason_codes"] and r["inferred_quantity"] == 2
 
 
 def test_weight_anomaly(bank):
-    assert "weight_out_of_tolerance" in audit_drop(payload(measured_weight_delta_g=20), bank, 0.78, 18)["reason_codes"]
+    assert "weight_out_of_tolerance" in run(bank, measured_weight_delta_g=20)["reason_codes"]
 
 
 def test_no_embedding_requires_review(bank):
-    assert audit_drop(payload(visual_embedding=None), bank, 0.78, 18)["decision"] == "review_required"
+    assert run(bank, visual_embedding=None)["decision"] == "review_required"
 
 
-def test_dimension_mismatch_caught(bank):
+def test_dimension_mismatch_is_a_review_not_a_hold(bank):
+    r = run(bank, visual_embedding=[1.0, 0.0])
+    assert "embedding_dimension_mismatch" in r["reason_codes"] and r["decision"] == "review_required"
+
+
+def test_unknown_item_is_never_forced_onto_nearest_sku(bank):
+    r = run(bank, visual_embedding=[0, 0, 1, 0])
+    assert r["match_status"] == "unknown" and r["decision"] == "review_required"
+    assert "unknown_item" in r["reason_codes"]
+
+
+def test_ambiguous_lookalike_resolved_by_weight(bank):
+    r = run(bank, visual_embedding=[1, 0, 0, 0])
+    assert r["match_status"] == "ambiguous" and r["resolved_by_weight"] is True and r["decision"] == "pass"
+
+
+def test_ambiguous_lookalike_with_same_weight_is_review(twin_bank):
+    r = run(twin_bank, visual_embedding=[1, 0, 0, 0])
+    assert r["match_status"] == "ambiguous" and r["decision"] == "review_required"
+    assert "visual_ambiguous_lookalike" in r["reason_codes"]
+
+
+def test_net_only_weight_cannot_hold(bank):
+    r = audit_drop(payload(expected_sku="NET", measured_weight_delta_g=20, visual_embedding=None),
+                   bank, CATALOG, SCALE, POLICY)
+    assert r["decision"] == "review_required" and "weight_out_of_tolerance_unverified" in r["reason_codes"]
+
+
+def test_unknown_catalog_sku_and_unsettled_scale_are_reviews(bank):
+    assert "catalog_weight_unavailable" in run(bank, expected_sku="MISSING")["reason_codes"]
+    assert "scale_unsettled" in run(bank, settled=False)["reason_codes"]
+
+
+def test_classify_match_margin_and_per_sku_threshold():
+    topk = [("A", 0.9), ("B", 0.88)]
+    assert classify_match(topk, POLICY)["status"] == "ambiguous"
+    assert classify_match([("A", 0.9), ("B", 0.5)], POLICY)["status"] == "confident"
+    strict = {"A": {"match_threshold": 0.95}}
+    assert classify_match([("A", 0.9)], POLICY, strict, "A")["status"] == "unknown"
+    assert classify_match([], POLICY)["status"] == "unavailable"
+
+
+def test_bank_topk_is_deduplicated_per_sku(tmp_path):
+    path = tmp_path / "multi.npz"
+    np.savez(path, skus=np.array(["A", "A", "B"]),
+             embeddings=np.array([[1, 0], [0.9, 0.4], [0, 1]], dtype=np.float32))
+    top = SkuBank(path).match_topk([1, 0], k=3)
+    assert [sku for sku, _ in top] == ["A", "B"]
     with pytest.raises(ValueError, match="Embedding dimension mismatch"):
-        bank.match([1.0, 0.0])
-    r = audit_drop(payload(visual_embedding=[1.0, 0.0]), bank, 0.78, 18)
-    assert "embedding_dimension_mismatch" in r["reason_codes"]
-    assert r["decision"] == "hold"
+        SkuBank(path).match([1.0, 0.0, 0.0])
 
 
 def test_reconcile():

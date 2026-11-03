@@ -6,7 +6,7 @@ The demo runs by opening `index.html`. The ML service is a separate Python appli
 
 ## Project status and production boundary
 
-This repository provides an engineering baseline and data/training workflows. It includes a locally generated 66-SKU DINOv2 reference bank built from public, India-market packaged-grocery catalog photos, but does **not** contain store-trained packing/freshness models, live store footage, or hardware drivers. The barcode-prefix and product-category rules narrow this demo catalog; they do not verify that an item is listed by Instamart. Until store-specific models and sensor adapters are supplied, uncertain inference returns explicit `review_required` results rather than invented confidence scores. Data collection, model validation, sensor calibration, and a controlled store pilot are still needed before operational deployment.
+This repository provides an engineering baseline and data/training workflows. It includes a locally generated <!--bank:sku_count-->68<!--/bank-->-SKU DINOv2 reference bank (<!--bank:reference_views-->108<!--/bank--> reference views; numbers are synced from the bank metadata by `scripts/sync_readme_stats.py`) built from public, India-market packaged-grocery catalog photos, but does **not** contain store-trained packing/freshness models, live store footage, or hardware drivers. The barcode-prefix and product-category rules narrow this demo catalog; they do not verify that an item is listed by Instamart. Until store-specific models and sensor adapters are supplied, uncertain inference returns explicit `review_required` results rather than invented confidence scores. Data collection, model validation, sensor calibration, and a controlled store pilot are still needed before operational deployment.
 
 The browser UI is served by FastAPI. Catalog image matching and produce freshness upload call the real model endpoints; packing drop events and expiry OCR remain simulated/manual-entry demo flows. All public-data model results must be presented as prototype triage, not validated Instamart performance.
 
@@ -63,8 +63,8 @@ OCR remains unloaded unless `INSTA_AUDIT_ENABLE_OCR=true` and local PaddleOCR de
 ## Data workflow
 
 1. Review `data/README.md` and the dataset notices in `data/datasets.yaml`.
-2. Fetch only a small set of India-tagged products with Indian barcode prefixes and names matched to the demo grocery categories: `python scripts/fetch_open_food_facts.py --limit 100 --download-images --output data/catalog/openfoodfacts_india.jsonl`. This filter runs before image downloads. The current 66-SKU sample is a filtered subset of an earlier 100-row sample; its original metadata is retained in `data/catalog/openfoodfacts_india.raw.jsonl` for provenance. Review each image's attribution/rights. The sample demonstrates catalog lookup only and is not verified Instamart assortment data.
-3. Organize the curated photos with `python scripts/prepare_open_food_facts_anchors.py`. This creates a draft SKU manifest and one-view anchor folders; add owned back/side/tilted views and measured unit weights before packing evaluation. The DINOv2 bank in `artifacts/sku_bank.npz` currently contains 66 SKUs, one reference view each.
+2. Fetch only a small set of India-tagged products with Indian barcode prefixes and names matched to the demo grocery categories: `python scripts/fetch_open_food_facts.py --limit 100 --download-images --output data/catalog/openfoodfacts_india.jsonl`. This filter runs before image downloads. The current <!--bank:sku_count-->68<!--/bank-->-SKU sample is a filtered subset of an earlier 100-row sample; its original metadata is retained in `data/catalog/openfoodfacts_india.raw.jsonl` for provenance. Review each image's attribution/rights. The sample demonstrates catalog lookup only and is not verified Instamart assortment data.
+3. Organize the curated photos with `python scripts/prepare_open_food_facts_anchors.py`. This creates a draft SKU manifest and one-view anchor folders; add owned back/side/tilted views and measured unit weights before packing evaluation. The DINOv2 bank in `artifacts/sku_bank.npz` currently contains <!--bank:sku_count-->68<!--/bank--> SKUs and <!--bank:reference_views-->108<!--/bank--> reference views.
 4. Add owned store-camera frames using the layouts in `data/README.md`; keep order/session IDs grouped when splitting to prevent leakage.
 5. Copy `configs/localizer.example.yaml` to a private/local `data/localizer.yaml`, edit it to point to annotated capture data, then train: `python scripts/train_detector.py --data data/localizer.yaml`.
 6. Build SKU embeddings from reviewed anchor folders: `python scripts/build_embedding_bank.py --catalog data/catalog/skus.yaml --images data/anchors --output artifacts/sku_bank.npz`.
@@ -83,12 +83,12 @@ OCR remains unloaded unless `INSTA_AUDIT_ENABLE_OCR=true` and local PaddleOCR de
 
 ## API
 
-- `GET /health` — liveness and model readiness.
+- `GET /health` — liveness, model readiness, embedder/bank compatibility (`status: degraded` on a mismatch) and embedding-failure count.
 - `POST /v1/packing/seal` — **order/bag-level audit at sealing** (I1, I3, I4): the order lines and picker scans are looked up server-side by `order_id`; the client reports only the settled seal weight, optional bagged counts, and optional frames. Returns the decision, the operating `mode`, the resulting `action` (`none | notify | block`), and the proof-of-pack head hash when capture is enabled.
 - `POST /v1/orders/webhook` — HMAC-signed OMS "order ready to pack" push. Contract: `docs/oms_webhook_contract.md`.
 - `GET /v1/proof/{order_id}/{bag_id}` — proof-of-pack manifest plus hash-chain verification (I2).
 - `POST /v1/admin/kill-switch`, `POST /v1/admin/proof/purge` — force every store to `off`; delete bundles past retention. Require an API key outside development.
-- `POST /v1/packing/audit` — one drop event (legacy per-item path); client tolerance can only tighten the server tolerance.
+- `POST /v1/packing/audit` — one drop event (per-item path). The client sends only what it measured (`measured_weight_delta_g`, `settled`, embedding or crop, `expected_sku`, `expected_quantity`); weight, tolerance and identity come from the server-side catalog, the unit count is inferred from weight, and the old `expected_unit_weight_g`, `observed_sku`, `observed_quantity` and `max_weight_error_pct` fields are rejected with 422. Matching is top-k with a margin and an `unknown_item` path.
 - `POST /v1/inward/expiry` — optional close-up image or recognized text plus received date and category. Set `INSTA_AUDIT_ENABLE_OCR=true` to load the optional OCR adapter.
 - `POST /v1/inward/freshness` — produce image for condition triage.
 

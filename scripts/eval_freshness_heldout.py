@@ -102,7 +102,7 @@ def main() -> None:
             raise SystemExit(f"missing image {path}; rebuild the split or pass --images")
         batch.append(tf(Image.open(path).convert("RGB")))
         batch_meta.append({"path": path, "truth": r["stage"], "conflict": r["group_id"] in conflicting,
-                           "name": r["original_filename"]})
+                           "name": r["original_filename"], "commodity": r.get("commodity") or "unknown"})
         if len(batch) == 64:
             flush()
     flush()
@@ -120,6 +120,11 @@ def main() -> None:
         "conflicting_filenames": conflict_files,
         "all_rows": summarize(rows, classes),
         "excluding_conflicting_groups": summarize(clean, classes),
+        # Pooled accuracy hides weak commodities; vendors are penalised per commodity.
+        "per_commodity_clean": {
+            commodity: summarize([r for r in clean if r["commodity"] == commodity], classes)
+            for commodity in sorted({r["commodity"] for r in clean})
+        },
         "low_confidence_rate_clean": round(sum(r["confidence"] < args.review_threshold for r in clean) / max(1, len(clean)), 4),
         "spoiled_binary_clean": {
             "recall": round(sum(r["pred"] in spoiled for r in clean if r["truth"] in spoiled)

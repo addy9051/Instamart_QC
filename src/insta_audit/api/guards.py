@@ -2,6 +2,8 @@
 import threading
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from contextlib import contextmanager
 
 from fastapi import HTTPException
@@ -49,4 +51,34 @@ class InferenceGate:
             yield
         finally:
             self._semaphore.release()
+
+
+class InferenceRunner:
+    """Bounded worker pool with a bounded queue and a per-request timeout (C24).
+
+    At most `workers` calls run at once and `workers + max_queue` are admitted in total; a caller
+    that cannot be admitted within `wait_seconds` gets 503, and one whose call outlasts
+    `timeout_seconds` gets 504. Python cannot cancel a running call, so a timed-out call keeps its
+    admission slot until it finishes: stuck inference cannot pile up unbounded work.
+    """
+
+    def __init__(self, workers: int, max_queue: int, wait_seconds: float, timeout_seconds: float) -> None:
+        self._executor = ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="inference")
+        self._admission = threading.BoundedSemaphore(max(1, workers) + max(0, max_queue))
+        self.wait_seconds = wait_seconds
+        self.timeout_seconds = timeout_seconds
+
+    def run(self, fn, *args, **kwargs):
+        if not self._admission.acquire(timeout=self.wait_seconds):
+            raise HTTPException(status_code=503, detail="inference busy, retry shortly", headers={"Retry-After": "2"})
+        try:
+            future = self._executor.submit(fn, *args, **kwargs)
+        except BaseException:
+            self._admission.release()
+            raise
+        future.add_done_callback(lambda _: self._admission.release())
+        try:
+            return future.result(timeout=self.timeout_seconds)
+        except FutureTimeout as error:
+            raise HTTPException(status_code=504, detail="inference timed out") from error
 
